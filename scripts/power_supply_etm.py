@@ -29,7 +29,11 @@ HWID_SUBSTR = "AB0P06NMA"  # eTM-5050PC PSU hardware ID substring
 # -------------------- Custom exception --------------------
 
 class PSUError(Exception):
-    """Base exception for power supply related errors."""
+    """Base exception for power supply related errors.
+
+    Args:
+        message (str): Human readable error message.
+    """
     def __init__(self, message):
         self.message = message
         super().__init__(self.message)
@@ -38,20 +42,19 @@ class PSUError(Exception):
 # -------------------- Initialisation --------------------
 
 def etm_open(port=None, slave_address=1):
-    """
-    Open a serial port to the eTommens PSU.
+    """Open and initialise a serial connection to the eTM-5050PC PSU.
 
     Args:
-        port (str, optional): Explicit COM port (e.g., 'COM10'). If None, the function looks up
-                              the port by HWID using 'find_port_by_hwid(HWID_SUBSTR)'.
-        slave_address (int, optional): Modbus slave address. Defaults to 1.
+        port (str, optional): Explicit port name (e.g. ``'COM10'``). If ``None``
+            the function will attempt to discover the device by HWID using
+            :func:`port_detect.find_port_by_hwid`.
+        slave_address (int): Modbus slave address (default: 1).
 
     Returns:
-        minimalmodbus.Instrument: The connected device.
+        minimalmodbus.Instrument: Configured Modbus RTU instrument instance.
 
     Raises:
-        RuntimeError: If the port cannot be discovered by HWID.
-        SystemExit: If connection fails after all retry attempts.
+        PSUError: If the device cannot be initialised or opened.
     """
     if port is None:
         port = find_port_by_hwid(HWID_SUBSTR)
@@ -74,12 +77,14 @@ def etm_open(port=None, slave_address=1):
 # -------------------- Write commands --------------------
 
 def etm_set_onoff(power_supply, *, on):
-    """
-    Turn the PSU output ON/OFF.
+    """Turn the PSU output on or off.
 
     Args:
         power_supply (minimalmodbus.Instrument): The connected PSU.
-        on (bool): True to turn ON, False to turn OFF.
+        on (bool): ``True`` to turn on, ``False`` to turn off.
+
+    Raises:
+        PSUError: If the Modbus write fails.
     """
     try:
         power_supply.write_register(0x0001, 1 if on else 0)
@@ -88,12 +93,15 @@ def etm_set_onoff(power_supply, *, on):
 
 
 def etm_set_voltage(power_supply, *, voltage):
-    """
-    Set the PSU output voltage.
+    """Set the PSU output voltage.
 
     Args:
         power_supply (minimalmodbus.Instrument): The connected PSU.
         voltage (float): Desired output voltage in volts (0.0 to 50.0 V).
+
+    Raises:
+        ValueError: If ``voltage`` is out of the allowed range.
+        PSUError: If communication with the device fails.
     """
     if not 0.0 <= voltage <= 50.0:
         raise ValueError("Voltage must be between 0 and 50 V")
@@ -104,12 +112,15 @@ def etm_set_voltage(power_supply, *, voltage):
 
 
 def etm_set_current(power_supply, *, current):
-    """
-    Set the PSU output current.
-    
+    """Set the PSU output current.
+
     Args:
         power_supply (minimalmodbus.Instrument): The connected PSU.
         current (float): Desired output current in amperes (0.0 to 50.0 A).
+
+    Raises:
+        ValueError: If ``current`` is out of the allowed range.
+        PSUError: If communication with the device fails.
     """
     if not 0.0 <= current <= 50.0:
         raise ValueError("Current must be between 0 and 50 A")
@@ -122,14 +133,13 @@ def etm_set_current(power_supply, *, current):
 # -------------------- Read commands --------------------
 
 def etm_read_voltage(power_supply):
-    """
-    Read the PSU output voltage.
+    """Read the PSU output voltage.
 
     Args:
         power_supply (minimalmodbus.Instrument): The connected PSU.
 
     Returns:
-        float: Current output voltage in volts.
+        float: Current output voltage in volts or ``math.nan`` if read failed.
     """
     try:
         return power_supply.read_register(0x0010, 2)
@@ -138,14 +148,13 @@ def etm_read_voltage(power_supply):
 
 
 def etm_read_current(power_supply):
-    """
-    Read the PSU output current.
+    """Read the PSU output current.
 
     Args:
         power_supply (minimalmodbus.Instrument): The connected PSU.
 
     Returns:
-        float: Current output current in amperes.
+        float: Current output current in amperes or ``math.nan`` if read failed.
     """
     try:
         return power_supply.read_register(0x0011, 2)

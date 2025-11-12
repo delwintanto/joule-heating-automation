@@ -52,17 +52,19 @@ from scipy.signal import argrelextrema, find_peaks, savgol_filter
 def detect_sharp_temp_rise(
     time_data, temp_data, rise_threshold=300.0, max_rise_time=2.0
 ):
-    """
-    Detect the first occurrence of a sharp temperature rise.
+    """Detect the first occurrence of a sharp temperature rise.
+
+    Scans the time-series to find the earliest point where the temperature
+    increases by at least ``rise_threshold`` within a window of ``max_rise_time``.
 
     Args:
         time_data (array-like): Array of time values.
         temp_data (array-like): Array of temperature values.
-        rise_threshold (float): Minimum temperature increase to detect.
-        max_rise_time (float): Maximum allowed time span for the rise.
+        rise_threshold (float): Minimum temperature increase to detect (°C).
+        max_rise_time (float): Maximum time span allowed for the rise (s).
 
     Returns:
-        int or None: Index of the detected rise or None if not found.
+        int or None: Index of the detected rise or ``None`` if not found.
     """
     for i, t_start in enumerate(time_data):
         j_indices = np.where(
@@ -86,31 +88,30 @@ def detect_peaks_and_valleys(
     min_drop=1,
     lookback=50,
 ):
-    """Detects peaks and valleys in temperature time-series data.
+    """Detect peaks, valleys and thermal transitions in temperature time-series.
 
-    The function performs the following steps:
-    1. Smooths the temperature data using Savitzky-Golay filter
-    2. Calculates the gradient of the smoothed temperature
-    3. Identifies peaks and valleys using prominence-based detection
-    4. Detects significant slope changes by analyzing gradient extrema
-    5. Combines all detected features into comprehensive results
+    The function performs smoothing, gradient analysis, and combined detection of
+    temperature extrema and slope changes to identify key features in the data.
 
     Args:
         time_data (array-like): Time values in seconds.
         temp_data (array-like): Temperature values in °C.
-        window (int, optional): Window length for Savitzky-Golay filter. Must be odd number.
-        polyorder (int, optional): Polynomial order for Savitzky-Golay filter.
-        extrema_order (int, optional): Order parameter for gradient extrema detection.
-        prom (float, optional): Minimum prominence for peak detection.
-        min_drop (float, optional): Minimum gradient drop for significant slope change.
-        lookback (int, optional): Lookback window for finding preceding maxima.
+        window (int): Window length for Savitzky–Golay filter (must be odd).
+        polyorder (int): Polynomial order for Savitzky–Golay filter.
+        extrema_order (int): Order parameter for gradient extrema detection.
+        prom (float): Minimum prominence for peak detection.
+        min_drop (float): Minimum gradient drop for significant slope change.
+        lookback (int): Lookback window for finding preceding maxima.
 
     Returns:
-        dict: Dictionary containing detection results with keys:
-            - 'combined_maxima': Combined peaks and halfway points
-            - 'combined_minima': Combined valleys and gradient minima
-            - 'temp_smooth': Smoothed temperature values
-            - 'gradient': Calculated gradient values
+        dict: Detection results with keys:
+            - ``'combined_maxima'``: Array of peak indices
+            - ``'combined_minima'``: Array of valley indices
+            - ``'temp_smooth'``: Smoothed temperature values
+            - ``'gradient'``: Calculated gradient values
+            - ``'time'``, ``'temperature'``: Aligned data arrays (post-transition start)
+            - ``'peak_valley_pairs'``: Consecutive pairs found
+            - ``'start_idx'``: Index of detected transition start
     """
     t = np.asarray(time_data)
     temperature = np.asarray(temp_data)
@@ -198,22 +199,20 @@ def detect_peaks_and_valleys(
 
 
 def calculate_period(peaks, x):
-    """Calculates the average period between consecutive peaks.
+    """Calculate the average time between consecutive peaks.
 
     Args:
         peaks (array-like): Indices of detected peaks.
         x (array-like): Time values corresponding to the peaks.
 
     Returns:
-        float: Average period in seconds. Returns 0 if fewer than 2 peaks are detected.
+        float: Average period in seconds. Returns 0 if fewer than 2 peaks.
     """
     return np.mean(np.diff([x[p] for p in peaks])) if len(peaks) >= 2 else 0
 
 
 def calculate_amplitude(peaks, valleys, x, y):
-    """Calculates the average amplitude between consecutive peaks and valleys.
-
-    The amplitude is calculated as half the difference between adjacent peak and valley values.
+    """Calculate the average amplitude between adjacent peaks and valleys.
 
     Args:
         peaks (array-like): Indices of detected peaks.
@@ -222,7 +221,8 @@ def calculate_amplitude(peaks, valleys, x, y):
         y (array-like): Temperature values corresponding to the data points.
 
     Returns:
-        float: Average amplitude in °C. Returns 0 if no valid peak-valley pairs are found.
+        float: Average amplitude in °C (half the peak–valley difference).
+               Returns 0 if no valid peak–valley pairs are found.
     """
     if len(peaks) == 0 or len(valleys) == 0:
         return 0

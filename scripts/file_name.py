@@ -23,16 +23,19 @@ def generate_filename(
     sample_name,
     tuning=False,
 ):
-    """
-    Generate a unique filename for storing experimental data.
-    Illegal characters are replaced with underscores.
+    """Generate a unique filename for storing experimental data.
+
+    The function creates a timestamped CSV filename in a standard Joule Heating
+    data directory and sanitises the sample name by replacing illegal filesystem
+    characters (``<>:"/\\|?* ``) with underscores to ensure cross-platform
+    compatibility. If the filename already exists, a numeric counter is appended.
 
     Args:
-        sample_name (str): Name of the sample.
-        tuning (bool, optional): Whether the file is for tuning data.
+        sample_name (str): Human-readable name of the sample.
+        tuning (bool): If ``True`` the filename will include a ``_tuning_data`` suffix.
 
     Returns:
-        str: Full path to the generated filename.
+        str: Full path to the generated (or pre-existing) CSV filename.
     """
     file_path = os.path.join(os.path.expanduser("~"), "Documents", "Joule_Heating_Data")
     os.makedirs(file_path, exist_ok=True)

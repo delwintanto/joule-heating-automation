@@ -37,24 +37,23 @@ from contextlib import contextmanager
 class _SystemSleepManager:
     """Platform-specific implementation to prevent system sleep.
 
+    Provides methods to disable and restore system sleep on Windows (via
+    SetThreadExecutionState), macOS (via caffeinate), and Linux (via xset).
+
     Args:
-        enable: If True, prevents sleep immediately on initialisation.
-                If False, requires explicit call to start().
+        enable (bool): If ``True`` start preventing sleep immediately on init.
 
     Attributes:
-        system (str): The detected operating system (Windows, Darwin, or Linux).
+        system (str): Detected OS: ``'Windows'``, ``'Darwin'``, or ``'Linux'``.
         _process (Optional[subprocess.Popen]): Subprocess handle for macOS caffeinate.
         _prev_state (Optional[int]): Previous execution state (Windows only).
-
-    Note:
-        Instances should be used as context managers or manually stopped.
     """
 
     def __init__(self, enable=True):
         """Initialise sleep prevention for the current platform.
-        
+
         Args:
-            enable: If True, starts preventing sleep immediately.
+            enable (bool): If ``True`` starts preventing sleep immediately.
         """
         self.system = platform.system()  # Detect the current OS
         self._process: Optional[subprocess.Popen] = None  # For macOS caffeinate
@@ -67,12 +66,12 @@ class _SystemSleepManager:
         """Begin preventing system sleep.
 
         Platform-specific implementations:
-            - Windows: Uses SetThreadExecutionState API
-            - macOS: Launches caffeinate subprocess
-            - Linux: Uses xset commands if available
+            - **Windows**: Uses ``SetThreadExecutionState`` API
+            - **macOS**: Launches ``caffeinate`` subprocess
+            - **Linux**: Uses ``xset`` commands (if available)
 
-        Note:
-            Safe to call multiple times, but only the first call has effect.
+        Returns:
+            None
         """
         if self.system == "Windows":
             # ES_CONTINUOUS | ES_SYSTEM_REQUIRED | ES_DISPLAY_REQUIRED
@@ -106,12 +105,15 @@ class _SystemSleepManager:
         """Allow system sleep again.
 
         Platform-specific cleanup:
-            - Windows: Restores previous execution state
-            - macOS: Terminates caffeinate process
-            - Linux: Restores screensaver and DPMS settings if possible
+            - **Windows**: Restores previous execution state
+            - **macOS**: Terminates caffeinate process
+            - **Linux**: Restores screensaver and DPMS (if possible)
 
-        Note:
-            Safe to call multiple times or if start() wasn't called.
+        Returns:
+            None
+
+        Notes:
+            Safe to call multiple times or if ``start()`` was not called.
         """
         if self.system == "Windows" and self._prev_state is not None:
             ctypes.windll.kernel32.SetThreadExecutionState(0x80000000)  # ES_CONTINUOUS
@@ -140,7 +142,7 @@ class _SystemSleepManager:
 
     def __enter__(self):
         """Context manager entry point.
-        
+
         Returns:
             _SystemSleepManager: The instance itself.
         """

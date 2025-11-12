@@ -1,8 +1,10 @@
-"""This script generates a GUI for Joule Heating experiment parameters.
+"""Graphical interfaces for entering Joule Heating experiment parameters.
 
-The script provides two main interfaces:
-1. A basic interface for simple current/duration experiments.
-2. An advanced interface with PID control and temperature regulation.
+- :func:`gui_cc` for constant-current experiments
+- :func:`gui_pid` for PID-controlled temperature experiments
+
+Both functions are intended to be used by the main scripts and return a
+tuple of parameters or ``(None, ... )`` when cancelled.
 
 Author       : Delwin Tanto
 Last updated : 04 Nov 2025
@@ -56,8 +58,7 @@ class LabeledEntry:
             ToolTip(self.entry, msg=tooltip, delay=0.3)
 
     def get(self):
-        """
-        Return the trimmed text value from the entry field.
+        """Return the trimmed text value from the entry field.
 
         Returns:
             str: The cleaned string from the entry.
@@ -65,8 +66,7 @@ class LabeledEntry:
         return self.var.get().strip()
 
     def set(self, value):
-        """
-        Set the value of the entry field.
+        """Set the value displayed in the entry widget.
 
         Args:
             value (str): The value to insert into the entry.
@@ -82,8 +82,7 @@ class RowCounter:
         value (int): The current row value.
     """
     def __init__(self, start=0):
-        """
-        Initialise the RowCounter with a starting value.
+        """Initialise the RowCounter with a starting value.
 
         Args:
             start (int): Initial row index.
@@ -91,8 +90,7 @@ class RowCounter:
         self.value = start  # Current row value
 
     def next(self, step=1):
-        """
-        Returns the current row index and increments it.
+        """Return the current row index and increment by ``step``.
 
         Args:
             step (int): Step size for incrementing (default is 1).
@@ -106,21 +104,19 @@ class RowCounter:
 
 
 def _parse_floats(input_str):
-    """
-    Convert a comma-separated string to a list of floats.
+    """Convert a comma-separated string to a list of floats.
 
     Args:
         input_str (str): Comma-separated numbers as a string.
 
     Returns:
-        list of float: List of parsed float values.
+        list[float]: List of parsed float values.
     """
     return list(map(float, input_str.split(",")))
 
 
 def _show_error(msg):
-    """
-    Display an error message dialog.
+    """Display an error message dialog.
 
     Args:
         msg (str): Error message to display.
@@ -129,8 +125,7 @@ def _show_error(msg):
 
 
 def _show_info(msg):
-    """
-    Display an informational message dialog.
+    """Display an informational message dialog.
 
     Args:
         msg (str): Information message to display.
@@ -139,14 +134,13 @@ def _show_info(msg):
 
 
 def _check_empty_fields(field_dict):
-    """
-    Identify empty entry fields.
+    """Identify which labeled fields are empty.
 
     Args:
-        field_dict (dict): Dictionary mapping labels to (variable, tooltip) tuples.
+        field_dict (dict): Mapping from label text to ``(tk.Variable, tooltip)``.
 
     Returns:
-        list of str: List of labels with empty values (excluding unit hints).
+        list[str]: Labels (without unit hints) whose variables are empty.
     """
     return [
         re.sub(r"\s*\([^)]*\)", "", label)
@@ -156,8 +150,7 @@ def _check_empty_fields(field_dict):
 
 
 def _save_settings(file_vars):
-    """
-    Save the given parameter dictionary to a JSON or text file.
+    """Save the given parameter dictionary to a JSON or text file.
 
     Args:
         file_vars (dict): Parameters to save.
@@ -197,11 +190,10 @@ def _save_settings(file_vars):
 
 
 def _load_settings(target_vars):
-    """
-    Load parameters from a JSON or text file into the provided variable dictionary.
+    """Load parameters from a JSON or text file into target tk.Variable instances.
 
     Args:
-        target_vars (dict): Mapping of parameter names to tk.StringVar or tk.IntVar instances.
+        target_vars (dict): Mapping of parameter names to ``tk.Variable`` instances.
     """
     file_path = filedialog.askopenfilename(
         initialdir=DEFAULTDIR,
@@ -241,13 +233,12 @@ def _load_settings(target_vars):
 
 
 def _radio_button(master, label_text, options, var, row_counter):
-    """
-    Create a radio button group with tooltips.
+    """Create a radio button group with tooltips.
 
     Args:
         master (tk.Widget): Parent widget.
         label_text (str): Label for the radio group.
-        options (list of tuple): Options as (label, tooltip) pairs.
+        options (list[tuple[str,str]]): Options as (label, tooltip) pairs.
         var (tk.Variable): Variable to bind selected value.
         row_counter (RowCounter): Row counter for widget placement.
     """
@@ -265,14 +256,13 @@ def _radio_button(master, label_text, options, var, row_counter):
 
 
 def _sec_to_hhmmss(seconds_float):
-    """
-    Convert a float representing seconds to a formatted hh:mm:ss string.
+    """Convert seconds to an "HH:MM:SS" formatted string.
 
     Args:
         seconds_float (float): Time in seconds.
 
     Returns:
-        str: Time formatted as "HH:MM:SS".
+        str: Time formatted as ``HH:MM:SS``.
     """
     h, m = divmod(int(round(seconds_float)), 3600)
     m, s = divmod(m, 60)

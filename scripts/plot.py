@@ -11,15 +11,14 @@ import matplotlib.pyplot as plt
 
 
 def _plot_set_position(position):
-    """
-    Safely set the position of the current matplotlib figure window.
+    """Set the position/geometry of the current Matplotlib figure window.
 
     Args:
-        position (str): A geometry string, e.g., "+50+50" or "800x600+100+100".
+        position (str): Geometry string, e.g. ``"+50+50"`` or ``"800x600+100+100"``.
 
     Notes:
-        This function is designed to be cross-platform safe. On backends that
-        do not support GUI window manipulation, it will silently fail.
+        On backends that do not support GUI window manipulation this function
+        will fail silently.
     """
     try:
         plt.get_current_fig_manager().window.wm_geometry(position)
@@ -28,6 +27,14 @@ def _plot_set_position(position):
 
 
 def _is_finite_number(x):
+    """Return True if ``x`` can be converted to a finite float.
+
+    Args:
+        x: Value to test for finiteness.
+
+    Returns:
+        bool: True when ``x`` is a finite number, False otherwise.
+    """
     try:
         return math.isfinite(float(x))
     except (TypeError, ValueError):
@@ -87,8 +94,7 @@ def live_plot_updt(
     y2,
     y3,
 ):
-    """
-    Update the live plot with the latest experiment data.
+    """Update the live plot with the latest experiment data.
 
     Args:
         fig (Figure): Matplotlib figure.
@@ -102,6 +108,9 @@ def live_plot_updt(
         y1 (list): Temperature values.
         y2 (list): Current values.
         y3 (list): Resistance values.
+
+    Returns:
+        None
     """
     for line, y in zip((line1, line2, line3), (y1, y2, y3)):
         line.set_data(x, y)  # Update the data for each line
@@ -127,13 +136,16 @@ def live_plot_updt(
 
 
 def plot_data(df, columns=None, sample_name=None):
-    """
-    Plot time-series data from a Joule heating experiment.
+    """Plot time-series data from a Joule heating experiment.
 
     Args:
         df (pd.DataFrame): DataFrame containing experiment data.
-        columns (list of str, optional): Columns to plot. Defaults to all 4 major outputs.
+        columns (list[str], optional): Columns to plot. Defaults to Temperature,
+            Voltage, Current and Resistance.
         sample_name (str, optional): Title for the plot.
+
+    Returns:
+        None
     """
     if columns is None:
         columns = ["Temperature (°C)", "Voltage (V)", "Current (A)", "Resistance (Ω)"]
@@ -168,7 +180,9 @@ def plot_data(df, columns=None, sample_name=None):
 
 
 def close_plot():
-    """
-    Close the current matplotlib figure.
+    """Close the current matplotlib figure.
+
+    Returns:
+        None
     """
     plt.close()

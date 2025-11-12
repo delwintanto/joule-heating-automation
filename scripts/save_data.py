@@ -1,6 +1,13 @@
-"""
-Windows-focused streaming CSV writer with Hidden + advisory lock.
-Works on Windows; on POSIX it will still stream but without Windows Hidden attribute.
+"""Streaming CSV writer with Windows-friendly hidden + advisory lock.
+
+This module implements a small streaming CSV writer that keeps a temporary
+``.partial`` file open during an experiment run and atomically renames it to
+the final CSV when complete. It attempts to set the file hidden attribute on
+Windows and acquires an advisory lock while writing. On POSIX systems the
+module still streams data but without Windows-specific hidden attribute.
+
+Usage:
+    from save_data import save_start, save_row, save_finalise
 
 Author       : Delwin Tanto
 Last updated : 06 Oct 2025
@@ -18,9 +25,21 @@ _STATE = {"fh": None, "writer": None, "tmp_path": None, "final_path": None, "n":
 STREAM_FLUSH_EVERY = 1  # set to 10+ if you want fewer disk writes
 
 def save_start(sample_name, tuning=False):
-    """
-    Open a hidden + locked temp CSV, write header and column names, keep handle open.
-    filename_fn: callable like generate_filename(sample_name) -> full final path (str or Path)
+    """Open a temporary, locked CSV file and write the header row.
+
+    The function creates a final filename via :func:`file_name.generate_filename`,
+    opens a ``.partial`` temporary file for streaming writes, attempts to set the
+    Windows hidden attribute, locks the file, and writes the CSV header row.
+
+    Args:
+        sample_name (str): Sample identifier used to create the filename.
+        tuning (bool): If True the filename will indicate tuning data.
+
+    Returns:
+        None
+
+    Side effects:
+        - Opens a file handle kept in module state until :func:`save_finalise` is called.
     """
     final_path = pathlib.Path(generate_filename(sample_name, tuning))
     tmp_path = final_path.with_name(final_path.name + ".partial")
@@ -64,7 +83,21 @@ def save_start(sample_name, tuning=False):
 
 
 def save_row(elapsed_s, t_meas, i_meas, v_meas, r_meas):
-    """Append a row; flush every STREAM_FLUSH_EVERY rows."""
+    """Append a measurement row to the open CSV stream.
+
+    The first written timestamp is normalised to zero. Rows are flushed to disk
+    every ``STREAM_FLUSH_EVERY`` rows.
+
+    Args:
+        elapsed_s (float): Elapsed seconds timestamp (monotonic or wall-clock).
+        t_meas (float): Temperature measurement in °C.
+        i_meas (float): Current measurement in A.
+        v_meas (float): Voltage measurement in V.
+        r_meas (float): Resistance measurement in Ω.
+
+    Returns:
+        None
+    """
     s = _STATE
     if not s["writer"]:
         return
@@ -81,7 +114,11 @@ def save_row(elapsed_s, t_meas, i_meas, v_meas, r_meas):
 
 
 def save_finalise():
-    """Unlock, close, and atomically rename '.partial' -> final CSV. Returns final path or None."""
+    """Finalize the stream: unlock, close and atomically rename temporary file.
+
+    Returns:
+        str or None: The final CSV path if a file was finalised, otherwise None.
+    """
     s = _STATE
     if not s["fh"]:
         return None

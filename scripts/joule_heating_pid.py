@@ -32,17 +32,24 @@ from power_supply_etm import (
 from print_summary import print_summary, print_steps
 from save_data import save_start, save_row, save_finalise
 from system_sleep import prevent_sleep
-from temp_sensor_ycr import ycr_open, ycr_read_temp
+from temp_sensor_optris import optris_open, optris_set_laser, OptrisIRError
+from temp_sensor_utils import read_temperature
+from temp_sensor_ycr import ycr_open, ycr_set_laser, YCRIRError
 
 
 # Constants
 MAX_TEMP = 1200  # Max temperature limit (°C) for safety
 MIN_TEMP = 30  # Min temp limit (°C) for colour mapping
+LOOP_INTERVAL = 0.1  # Loop interval to prevent CPU overload (s)
+YCR_MIN_RANGE = 300  # YCR sensor minimum operating range (°C); use Optris below this
 
+
+# -------------------- Helper functions --------------------
 
 def auto_tune_pid(
     sample_name,
-    temp_sensor,
+    ycr_sensor,
+    optris_sensor,
     power_supply,
     tuning_durr,
     i_set,
@@ -59,12 +66,17 @@ def auto_tune_pid(
     lp_curr,
     lp_res,
 ):
-    """
-    Tune PID parameters using Ziegler-Nichols method via relay feedback.
+    """Tune PID parameters using relay feedback (Ziegler–Nichols method).
+
+    The function performs a relay-feedback test by switching the PSU current on
+    and off and recording the resulting temperature oscillations. It analyses
+    the recorded time series to estimate oscillation period and amplitude, then
+    computes PID gains using Ziegler–Nichols formulas.
 
     Args:
         sample_name (str): Name of the sample.
-        temp_sensor (Instrument): IR temperature sensor.
+        ycr_sensor (Instrument): YCR IR temperature sensor (for high temperatures).
+        optris_sensor (serial.Serial): Optris IR sensor (for low temperatures).
         power_supply (Instrument): Power supply unit.
         tuning_durr (int): Tuning duration in seconds.
         i_set (float): Maximum current limit.
@@ -74,7 +86,9 @@ def auto_tune_pid(
         lp_time, lp_temp, lp_curr, lp_res: Data buffers for live plot.
 
     Returns:
-        tuple: Tuned (Kp, Ki, Kd) values and updated data buffers.
+        tuple: ``(kp, ki, kd, lp_time, lp_temp, lp_curr, lp_res, time_start)``
+            where ``kp/ki/kd`` are computed PID gains and the other values are
+            updated buffers and the observed start time of the tuning.
     """
     save_start(sample_name, tuning=True)  # Initialise save file
 
@@ -95,9 +109,9 @@ def auto_tune_pid(
             # Alternate between high and low current
             i_read = i_set if int(elapsed / switch_interval) % 2 == 0 else 0
             etm_set_current(power_supply, current=i_read)
-            t_read = ycr_read_temp(temp_sensor)
+            t_read = read_temperature(ycr_sensor, optris_sensor)
             v_read = etm_read_voltage(power_supply)
-            r_read = v_read / i_read if i_read != 0 else 0
+            r_read = v_read / i_read if i_read != 0 else float("inf")
 
             if t_read > MAX_TEMP:
                 print(
@@ -108,7 +122,7 @@ def auto_tune_pid(
 
             print(
                 f"\r\033[34mI: {i_read:>5.2f} A\033[0m | "
-                f"{temp_colour(t_read, MIN_TEMP, MAX_TEMP)}T: {t_read:>5.1f}°C\033[0m | "
+                f"{temp_colour(t_read, MIN_TEMP, MAX_TEMP)}T: {t_read:>6.1f}°C\033[0m | "
                 f"\033[33mt elapsed: {elapsed:>3.0f} s\033[0m | "
                 "\033[2mCtrl+C to skip\033[0m".ljust(20),
                 end="",
@@ -134,7 +148,7 @@ def auto_tune_pid(
                 lp_res,
             )
             save_row(elapsed, t_read, i_read, v_read, r_read)
-            time.sleep(0.1)  # Sleep to prevent CPU overload
+            time.sleep(LOOP_INTERVAL)  # Sleep to prevent CPU overload
         except KeyboardInterrupt:
             break
 
@@ -153,7 +167,7 @@ def auto_tune_pid(
         lp_temp
     )
 
-    # Plot the peaks on the live plot
+    # Plot the peaks and valleys on the live plot
     ax_temp.plot(
         [lp_time[p] for p in tuning_data["combined_maxima"]],
         [lp_temp[p] for p in tuning_data["combined_maxima"]],
@@ -204,7 +218,8 @@ def run_experiment(
     ki,
     kd,
     tuning_durr,
-    temp_sensor,
+    ycr_sensor,
+    optris_sensor,
     power_supply,
     temp_sp,
     durr_sp,
@@ -213,14 +228,19 @@ def run_experiment(
     cooldown_dur,
     tuning,
 ):
-    """
-    Run the Joule heating experiment with PID control.
+    """Run the Joule heating experiment using a PID controller.
+
+    The function sets up a PID controller with the provided gains or tunes
+    them using ``auto_tune_pid`` when requested. It performs temperature
+    control by adjusting the PSU current and records data for plotting and
+    saving.
 
     Args:
         sample_name (str): Sample identifier.
         kp, ki, kd (float): PID gain parameters.
         tuning_durr (int): Tuning duration in seconds.
-        temp_sensor (Instrument): IR temperature sensor.
+        ycr_sensor (Instrument): YCR IR temperature sensor (for high temperatures).
+        optris_sensor (serial.Serial): Optris IR sensor (for low temperatures).
         power_supply (Instrument): Power supply unit.
         temp_sp (list): Temperature setpoints.
         durr_sp (list): Durations for each setpoint.
@@ -230,7 +250,7 @@ def run_experiment(
         tuning (str): Tuning method ("Auto tuning" or "Manual tuning").
 
     Returns:
-        tuple: (Kp, Ki, Kd, file_path)
+        tuple: The final PID gains ``(Kp, Ki, Kd)`` used by the experiment.
     """
     # Store cumulative time, temperature, and resistance data for the live plot
     lp_dataset = {
@@ -248,6 +268,10 @@ def run_experiment(
         line_res,
     ) = live_plot_init(sample_name)
 
+    # Turn on both sensor lasers
+    ycr_set_laser(ycr_sensor, on=True)
+    optris_set_laser(optris_sensor, on=True)
+
     # Run PID gains tuning
     if tuning == "Auto tuning":
         (
@@ -261,7 +285,8 @@ def run_experiment(
             time_start,
         ) = auto_tune_pid(
             sample_name,
-            temp_sensor,
+            ycr_sensor,
+            optris_sensor,
             power_supply,
             tuning_durr,
             i_set,
@@ -298,7 +323,7 @@ def run_experiment(
     # Initialise PID controller with manual or tuned gains
     pid = PID(Kp=kp, Ki=ki, Kd=kd)
     pid.output_limits = (0, i_set)  # Ensure output stays within the PSU range
-    pid.sample_time = 0.1  # Stable updates
+    pid.sample_time = LOOP_INTERVAL  # Stable updates
 
     save_start(sample_name, tuning=False)
 
@@ -317,19 +342,14 @@ def run_experiment(
 
         while time_now <= end_time:
             try:
-                t_read = ycr_read_temp(temp_sensor)
-                if t_read >= MAX_TEMP:
-                    curr = 0
-                elif t_read != t_read:  # NaN check
-                    curr = i_set
-                else:
-                    curr = pid(t_read)
+                t_read = read_temperature(ycr_sensor, optris_sensor)
 
                 # Set current based on PID output
+                curr = 0 if t_read >= MAX_TEMP else pid(t_read)
                 etm_set_current(power_supply, current=curr)
 
                 v_read = etm_read_voltage(power_supply)
-                r_read = v_read / curr if curr != 0 else 0
+                r_read = v_read / curr if curr != 0 else float("inf")
 
                 elapsed = time_now - time_start
                 save_row(elapsed, t_read, curr, v_read, r_read)
@@ -355,13 +375,13 @@ def run_experiment(
                     f"\r\033[1mStep {idx}/{total_steps} - "
                     f"SP: {setpoint:>5}°C/{duration:>5} s\033[0m | "
                     f"\033[34mI: {curr:>5.2f} A\033[0m | "
-                    f"{temp_colour(t_read, MIN_TEMP, MAX_TEMP)}T: {t_read:>5.1f}°C\033[0m | "
+                    f"{temp_colour(t_read, MIN_TEMP, MAX_TEMP)}T: {t_read:>6.1f}°C\033[0m | "
                     f"t: {max(0, int(end_time - time_now)):>3} s | "
                     "\033[2mCtrl+C to skip\033[0m".ljust(20),
                     end="",
                     flush=True,
                 )
-                time.sleep(0.1)  # Sleep to prevent CPU overload
+                time.sleep(LOOP_INTERVAL)  # Sleep to prevent CPU overload
                 time_now = time.monotonic()
 
             except KeyboardInterrupt:
@@ -383,8 +403,8 @@ def run_experiment(
         end_time_cooldown = time.monotonic() + cooldown_dur
         while time.monotonic() <= end_time_cooldown:
             try:
-                t_read = ycr_read_temp(temp_sensor)
-                i_read, v_read, r_read = 0, 0, 0
+                t_read = read_temperature(ycr_sensor, optris_sensor)
+                i_read, v_read, r_read = 0, 0, float("inf")
 
                 timestamp = time.monotonic()
                 elapsed = timestamp - time_start
@@ -410,7 +430,7 @@ def run_experiment(
                 print(
                     "\r\033[1;34mCooldown\033[0m - "
                     f"\r\033[34mI: {i_read:>5.2f} A\033[0m | "
-                    f"{temp_colour(t_read, MIN_TEMP, MAX_TEMP)}T: {t_read:>5.1f}°C\033[0m | "
+                    f"{temp_colour(t_read, MIN_TEMP, MAX_TEMP)}T: {t_read:>6.1f}°C\033[0m | "
                     f"t: {max(0, int(end_time_cooldown - timestamp)):>3} s | "
                     "\033[2mCtrl+C to end\033[0m".ljust(20),
                     end="",
@@ -418,9 +438,11 @@ def run_experiment(
                 )
             except KeyboardInterrupt:
                 break
-
-    file_path = save_finalise()
-    return kp, ki, kd, file_path
+        print(
+            f"\n\033[1;32m[{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}] "
+            "Cooldown completed!\033[0m"
+        )
+    return kp, ki, kd
 
 
 if __name__ == "__main__":
@@ -448,19 +470,21 @@ if __name__ == "__main__":
         if sample_id is None:
             raise SystemExit("Program stopped.")
 
-        # Initialise temperature sensor and power supply
-        ir_sensor = ycr_open()
+        # Initialise temperature sensors and power supply
+        ycr_temp_sensor = ycr_open()
+        optris_temp_sensor = optris_open()
         psu = etm_open()
 
         try:
             # Run the experiment
-            kp_gain, ki_gain, kd_gain, file_loc = run_experiment(
+            kp_gain, ki_gain, kd_gain = run_experiment(
                 sample_id,
                 kp_gain,
                 ki_gain,
                 kd_gain,
                 tuning_dur,
-                ir_sensor,
+                ycr_temp_sensor,
+                optris_temp_sensor,
                 psu,
                 sp_temp,
                 heating_times,
@@ -471,25 +495,28 @@ if __name__ == "__main__":
             )
         finally:
             try:
+                final_csv_path = save_finalise()
                 etm_set_onoff(psu, on=False)
-                save_finalise()
+                ycr_set_laser(ycr_temp_sensor, on=False)
+                optris_set_laser(optris_temp_sensor, on=False)
                 close_plot()
-            except OSError as e:
-                print(f"Error finalizing CSV: {e}")
+            except (OSError, YCRIRError, OptrisIRError, PSUError) as e:
+                print(f"Error during cleanup: {e}")
 
-        data = pd.read_csv(file_loc)
-        print_summary(
-            sample_id,
-            data,
-            file_loc,
-            pid_curr=max_current,
-            pid_volt=max_voltage,
-            pid_gains=(kp_gain, ki_gain, kd_gain),
-        )
-        print_steps(sp_temp, heating_times, cc=False)
+        if final_csv_path:
+            saved_data = pd.read_csv(final_csv_path)
+            print_summary(
+                sample_id,
+                saved_data,
+                final_csv_path,
+                pid_curr=max_current,
+                pid_volt=max_voltage,
+                pid_gains=(kp_gain, ki_gain, kd_gain),
+            )
+            print_steps(sp_temp, heating_times, cc=False)
 
-        plot_data(
-            data,
-            columns=["Temperature (°C)", "Current (A)", "Resistance (Ω)"],
-            sample_name=sample_id,
-        )
+            plot_data(
+                saved_data,
+                columns=["Temperature (°C)", "Current (A)", "Resistance (Ω)"],
+                sample_name=sample_id,
+            )

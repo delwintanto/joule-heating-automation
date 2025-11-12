@@ -8,16 +8,18 @@ Last updated : 04 Nov 2025
 
 
 def temp_colour(temp, min_temp, max_temp):
-    """
-    Return ANSI escape colour code based on temperature value.
+    """Return an ANSI escape code for colouring temperature values.
+
+    Maps the input temperature to a gradient from yellow (low) through orange
+    to red (high). Returns a grey code for NaN values.
 
     Args:
-        temp (float): Temperature in °C.
-        min_temp (float): Minimum temperature for colour mapping.
-        max_temp (float): Maximum temperature for colour mapping.
+        temp (float): Temperature in °C, or NaN.
+        min_temp (float): Minimum temperature for mapping range.
+        max_temp (float): Maximum temperature for mapping range.
 
     Returns:
-        str: ANSI colour escape code.
+        str: ANSI 256-colour escape code string (e.g. ``"\\033[38;5;226m"``).
     """
     if temp != temp:
         return "\033[38;5;240m"  # Grey for NaN

@@ -39,18 +39,36 @@ class YCRIRError(Exception):
 # -------------------- Helper functions --------------------
 
 def _regs_to_float_be_lowfirst(regs):
-    """
-    Convert two 16-bit registers [low_addr_word, high_addr_word] into float32.
-    Assumes big-endian within each 16-bit word, and low-address word is the LSW.
+    """Convert two 16-bit Modbus registers to float32.
+
+    Interprets two consecutive 16-bit register values as a single-precision
+    floating-point number. Assumes big-endian byte order within each word and
+    that the low-address word contains the least significant word (LSW) of
+    the 32-bit value.
+
+    Args:
+        regs (list): Two 16-bit register values [low_addr_word, high_addr_word].
+
+    Returns:
+        float: Interpreted as 32-bit IEEE float.
     """
     raw = (regs[1] << 16) | regs[0]
     return struct.unpack('>f', struct.pack('>I', raw))[0]
 
 
 def _float_to_regs_be_lowfirst(value):
-    """
-    Convert float32 to two 16-bit registers [low_addr_word, high_addr_word].
-    Big-endian within word, low-address word is LSW (common Modbus convention).
+    """Convert float32 to two 16-bit Modbus registers.
+
+    Converts a single-precision floating-point number to two consecutive
+    16-bit register values for Modbus transmission. Assumes big-endian byte
+    order within each word and that the low-address word contains the least
+    significant word (LSW).
+
+    Args:
+        value (float): The floating-point value to convert.
+
+    Returns:
+        list: Two 16-bit integers [low_addr_word, high_addr_word].
     """
     b = struct.pack('>f', float(value))  # 4 bytes, big-endian
     hi = (b[0] << 8) | b[1]              # high 16 bits
@@ -61,20 +79,23 @@ def _float_to_regs_be_lowfirst(value):
 # -------------------- Initialisation --------------------
 
 def ycr_open(port=None, slave_address=1):
-    """
-    Open a serial port to the YCR-D30180AR IR thermometer.
+    """Open a Modbus RTU connection to the YCR-D30180AR IR thermometer.
+
+    Establishes a serial connection configured for YCR Modbus communication
+    (9600 baud, 8E1 framing). If no port is specified, performs automatic
+    HWID-based port discovery.
 
     Args:
-        port (str, optional): Explicit COM port (e.g., 'COM10'). If None, the function looks up
-                              the port by HWID using 'find_port_by_hwid(HWID_SUBSTR)'.
+        port (str, optional): Explicit COM port identifier (e.g., 'COM10').
+            If None, discovers port via HWID substring. Defaults to None.
         slave_address (int, optional): Modbus slave address. Defaults to 1.
 
     Returns:
-        minimalmodbus.Instrument: The connected device.
+        minimalmodbus.Instrument: Configured Modbus device instance.
 
     Raises:
         RuntimeError: If the port cannot be discovered by HWID.
-        SystemExit: If connection fails after all retry attempts.
+        YCRIRError: If connection fails after all retry attempts.
     """
     if port is None:
         port = find_port_by_hwid(HWID_SUBSTR)
@@ -97,14 +118,17 @@ def ycr_open(port=None, slave_address=1):
 # -------------------- Temperature --------------------
 
 def ycr_read_temp(temp_sensor):
-    """
-    Read temperature from the YCR-D30180AR IR thermometer and apply calibration.
+    """Read the target temperature with factory calibration applied.
+
+    Reads the temperature measurement from Modbus register 0x0400 (two-word
+    float) and applies the factory calibration factor (×1.205). Returns NaN
+    if communication fails.
 
     Args:
-        temp_sensor (Instrument): The IR sensor.
+        temp_sensor (minimalmodbus.Instrument): The connected YCR sensor.
 
     Returns:
-        float: Current temperature in °C.
+        float: Temperature in degrees Celsius. Returns math.nan on error.
     """
     try:
         regs = temp_sensor.read_registers(0x0400, 2)
@@ -123,14 +147,17 @@ def ycr_read_temp(temp_sensor):
 # -------------------- Emissivity --------------------
 
 def ycr_read_emissivity(temp_sensor):
-    """
-    Read emissivity setting from the YCR-D30180AR IR thermometer.
+    """Read the emissivity setting from the sensor.
+
+    Retrieves the emissivity value from Modbus register 0x0402 (two-word
+    float). Emissivity is a material property used to convert IR measurements
+    to accurate temperature readings.
 
     Args:
-        temp_sensor (Instrument): The IR sensor.
-        
+        temp_sensor (minimalmodbus.Instrument): The connected YCR sensor.
+
     Returns:
-        float: Emissivity value (0.1 to 1.0).
+        float: Emissivity in range [0.1, 1.0]. Returns math.nan on error.
     """
     try:
         regs = temp_sensor.read_registers(0x0402, 2)
@@ -140,14 +167,17 @@ def ycr_read_emissivity(temp_sensor):
 
 
 def ycr_set_emissivity(temp_sensor, *, emissivity):
-    """
-    Set emissivity of the YCR-D30180AR IR thermometer.
+    """Set the emissivity value in the sensor.
+
+    Configures the emissivity (material's infrared emission property) used
+    for temperature calculation. Value is written to Modbus register 0x0402.
 
     Args:
-        temp_sensor (Instrument): The IR sensor.
-        
-    Returns:
-        float: Emissivity value (0.1 to 1.0).
+        temp_sensor (minimalmodbus.Instrument): The connected YCR sensor.
+        emissivity (float): Desired emissivity in range [0.1, 1.0].
+
+    Raises:
+        YCRIRError: If emissivity is outside valid range [0.1, 1.0].
     """
     if not 0.1 <= emissivity <= 1.0:
         raise YCRIRError("Emissivity must be between 0.1 and 1.0")
@@ -162,12 +192,14 @@ def ycr_set_emissivity(temp_sensor, *, emissivity):
 # -------------------- Laser pointer --------------------
 
 def ycr_set_laser(temp_sensor, *, on):
-    """
-    Turn the laser pointer on the IR sensor ON/OFF.
+    """Control the laser pointer ON/OFF.
+
+    Sends a Modbus write command to control the built-in laser pointer used
+    for targeting the measurement area on the sample surface.
 
     Args:
-        temp_sensor (Instrument): The IR sensor.
-        on (bool): True to turn ON, False to turn OFF.
+        temp_sensor (minimalmodbus.Instrument): The connected YCR sensor.
+        on (bool): True to turn laser ON, False to turn laser OFF.
     """
     try:
         temp_sensor.write_register(0x0438, 1 if on else 0)
@@ -178,15 +210,17 @@ def ycr_set_laser(temp_sensor, *, on):
 # -------------------- Averaging --------------------
 
 def ycr_read_avg_time(temp_sensor):
-    """
-    Read averaging time of the IR sensor. The averaging time is the time
-    over which the sensor averages the temperature readings.
-    
+    """Read the averaging time window setting.
+
+    Retrieves the temporal averaging window from Modbus register 0x0414
+    (two-word float). The sensor internally averages temperature readings
+    over this time window to reduce noise.
+
     Args:
-        temp_sensor (Instrument): The IR sensor.
+        temp_sensor (minimalmodbus.Instrument): The connected YCR sensor.
 
     Returns:
-        float: Averaging time in seconds (0 to 999.9).
+        float: Averaging time in seconds, range [0, 999.9]. Returns math.nan on error.
     """
     try:
         regs = temp_sensor.read_registers(0x0414, 2)
@@ -195,15 +229,19 @@ def ycr_read_avg_time(temp_sensor):
         return float('nan')
 
 def ycr_set_avg_time(temp_sensor, *, avg_time):
-    """
-    Set averaging time of the IR sensor.
-    
+    """Set the averaging time window for temperature readings.
+
+    Configures the temporal averaging window (register 0x0414). Higher values
+    provide more smoothing but slower response to temperature changes. Value
+    of 0 enables real-time (no averaging).
+
     Args:
-        temp_sensor (Instrument): The IR sensor.
-        avg_time (float): Averaging time in seconds (0 to 999.9).
+        temp_sensor (minimalmodbus.Instrument): The connected YCR sensor.
+        avg_time (float): Averaging window in seconds. Must be 0 (real-time)
+            or in range [0.1, 999.9].
 
     Raises:
-        YCRIRError: If avg_time is out of range.
+        YCRIRError: If avg_time is outside valid range.
     """
     if not (avg_time == 0 or 0.1 <= avg_time <= 999.9):
         raise YCRIRError("Averaging time must be 0 (real-time) or between 0.1 and 999.9 seconds")
@@ -218,14 +256,17 @@ def ycr_set_avg_time(temp_sensor, *, avg_time):
 # -------------------- Sensor temperature --------------------
 
 def ycr_read_body_temp(temp_sensor):
-    """
-    Read the sensor body temperature. Mainly for diagnostic purposes.
-    
+    """Read the sensor body (electronics) temperature.
+
+    Retrieves the internal temperature of the sensor electronics from Modbus
+    register 0x0404 (two-word float). Used primarily for diagnostic purposes
+    and thermal management.
+
     Args:
-        temp_sensor (Instrument): The IR sensor.
-        
+        temp_sensor (minimalmodbus.Instrument): The connected YCR sensor.
+
     Returns:
-        float: Sensor body temperature in °C.
+        float: Sensor body temperature in degrees Celsius. Returns math.nan on error.
     """
     try:
         regs = temp_sensor.read_registers(0x0404, 2)
