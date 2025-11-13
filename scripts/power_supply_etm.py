@@ -34,6 +34,7 @@ class PSUError(Exception):
     Args:
         message (str): Human readable error message.
     """
+
     def __init__(self, message):
         self.message = message
         super().__init__(self.message)
@@ -89,7 +90,8 @@ def etm_set_onoff(power_supply, *, on):
     try:
         power_supply.write_register(0x0001, 1 if on else 0)
     except (OSError, minimalmodbus.ModbusException) as e:
-        raise PSUError(f"Failed to turn PSU {'ON' if on else 'OFF'}: {e}") from e
+        raise PSUError(
+            f"Failed to turn PSU {'ON' if on else 'OFF'}: {e}") from e
 
 
 def etm_set_voltage(power_supply, *, voltage):
@@ -127,7 +129,8 @@ def etm_set_current(power_supply, *, current):
     try:
         power_supply.write_register(0x0031, current * 10.0, 1)
     except (ValueError, OSError, minimalmodbus.ModbusException) as e:
-        raise PSUError((f"Failed to set PSU current to {current} A: {e}")) from e
+        raise PSUError(
+            (f"Failed to set PSU current to {current} A: {e}")) from e
 
 
 # -------------------- Read commands --------------------

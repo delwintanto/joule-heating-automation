@@ -98,7 +98,7 @@ def print_steps(col1, col2, cc=True):
             ramp = next((r for r in ramps if r[0] == i), None)
 
             if ramp:
-                start, delta, dur, length = ramp
+                *_, length = ramp
 
                 for j in range(min(5, length)):  # Print first 5 steps
                     print(f"{i + j + 1:<10} {col1_list[i + j]:<18} {col2_list[i + j]:<18}")

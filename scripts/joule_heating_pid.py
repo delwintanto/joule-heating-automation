@@ -9,9 +9,11 @@ Last updated : 04 Nov 2025
 """
 
 import os
+import signal
 import time
 from collections import deque
 from datetime import datetime
+from threading import Event
 from tkinter import messagebox
 
 import pandas as pd
@@ -41,10 +43,20 @@ from temp_sensor_ycr import ycr_open, ycr_set_laser, YCRIRError
 MAX_TEMP = 1200  # Max temperature limit (°C) for safety
 MIN_TEMP = 30  # Min temp limit (°C) for colour mapping
 LOOP_INTERVAL = 0.1  # Loop interval to prevent CPU overload (s)
-YCR_MIN_RANGE = 300  # YCR sensor minimum operating range (°C); use Optris below this
+# YCR sensor minimum operating range (°C); use Optris below this
+YCR_MIN_RANGE = 300
 
 
 # -------------------- Helper functions --------------------
+
+# Event set by SIGINT handler to request skipping current step / ending cooldown
+stop_event = Event()
+
+
+def _sigint_handler(_sig, _frame):
+    """SIGINT handler: set stop flag for loops to observe."""
+    stop_event.set()
+
 
 def auto_tune_pid(
     sample_name,
@@ -106,6 +118,11 @@ def auto_tune_pid(
 
     while (elapsed := time.monotonic() - time_start) < tuning_durr:
         try:
+            # If SIGINT was received, skip auto-tuning early
+            if stop_event.is_set():
+                stop_event.clear()
+                break
+
             # Alternate between high and low current
             i_read = i_set if int(elapsed / switch_interval) % 2 == 0 else 0
             etm_set_current(power_supply, current=i_read)
@@ -150,7 +167,7 @@ def auto_tune_pid(
             save_row(elapsed, t_read, i_read, v_read, r_read)
             time.sleep(LOOP_INTERVAL)  # Sleep to prevent CPU overload
         except KeyboardInterrupt:
-            break
+            stop_event.set()
 
     tuning_csv_path = save_finalise()
     print(f"\nTuning data: {tuning_csv_path}")
@@ -318,7 +335,8 @@ def run_experiment(
                 "Please put in your new sample and press OK to continue."
             )
 
-    print(f"\033[33mPID Gains -> Kp: {kp:.3f}, Ki: {ki:.3f}, Kd: {kd:.3f}\n\033[0m")
+    print(
+        f"\033[33mPID Gains -> Kp: {kp:.3f}, Ki: {ki:.3f}, Kd: {kd:.3f}\n\033[0m")
 
     # Initialise PID controller with manual or tuned gains
     pid = PID(Kp=kp, Ki=ki, Kd=kd)
@@ -342,6 +360,11 @@ def run_experiment(
 
         while time_now <= end_time:
             try:
+                # If SIGINT was received, request to skip this heating step.
+                if stop_event.is_set():
+                    stop_event.clear()
+                    break
+
                 t_read = read_temperature(ycr_sensor, optris_sensor)
 
                 # Set current based on PID output
@@ -385,8 +408,9 @@ def run_experiment(
                 time_now = time.monotonic()
 
             except KeyboardInterrupt:
+                # Keep consistent: set the stop flag so other loops see it
+                stop_event.set()
                 skip_count.append(time.monotonic())
-                break
 
         if len(skip_count) == 3 and (skip_count[-1] - skip_count[0] <= 5):
             break  # Exit heating loop entirely if CTRL+C is pressed 3x within 5 s
@@ -398,11 +422,17 @@ def run_experiment(
     etm_set_current(power_supply, current=0)
     etm_set_voltage(power_supply, voltage=0)
     etm_set_onoff(power_supply, on=False)
+
     if cooldown_dur > 0:
         print(f"\nStarting cooldown phase for {cooldown_dur} s...")
         end_time_cooldown = time.monotonic() + cooldown_dur
         while time.monotonic() <= end_time_cooldown:
             try:
+                # If SIGINT was received, request to end cooldown early.
+                if stop_event.is_set():
+                    stop_event.clear()
+                    break
+
                 t_read = read_temperature(ycr_sensor, optris_sensor)
                 i_read, v_read, r_read = 0, 0, float("inf")
 
@@ -437,7 +467,8 @@ def run_experiment(
                     flush=True,
                 )
             except KeyboardInterrupt:
-                break
+                stop_event.set()
+
         print(
             f"\n\033[1;32m[{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}] "
             "Cooldown completed!\033[0m"
@@ -446,6 +477,9 @@ def run_experiment(
 
 
 if __name__ == "__main__":
+    # Register SIGINT handler so Ctrl+C sets `stop_event` and requests skip/stop.
+    signal.signal(signal.SIGINT, _sigint_handler)
+
     os.system("cls" if os.name == "nt" else "clear")
     print(
         f"[{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}] "
@@ -495,13 +529,23 @@ if __name__ == "__main__":
             )
         finally:
             try:
-                final_csv_path = save_finalise()
+                final_csv_path = save_finalise()  # Finalise and save data
+            except OSError as e:
+                print(f"Error saving final data: {e}")
+
+            try:
+                close_plot()
                 etm_set_onoff(psu, on=False)
                 ycr_set_laser(ycr_temp_sensor, on=False)
                 optris_set_laser(optris_temp_sensor, on=False)
-                close_plot()
-            except (OSError, YCRIRError, OptrisIRError, PSUError) as e:
+            except (YCRIRError, OptrisIRError, PSUError) as e:
                 print(f"Error during cleanup: {e}")
+
+            try:
+                # Restore default SIGINT handler so system behavior returns to normal.
+                signal.signal(signal.SIGINT, signal.default_int_handler)
+            except (ValueError, OSError):
+                pass
 
         if final_csv_path:
             saved_data = pd.read_csv(final_csv_path)

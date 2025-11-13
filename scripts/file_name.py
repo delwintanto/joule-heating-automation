@@ -37,7 +37,8 @@ def generate_filename(
     Returns:
         str: Full path to the generated (or pre-existing) CSV filename.
     """
-    file_path = os.path.join(os.path.expanduser("~"), "Documents", "Joule_Heating_Data")
+    file_path = os.path.join(os.path.expanduser(
+        "~"), "Documents", "Joule_Heating_Data")
     os.makedirs(file_path, exist_ok=True)
 
     # Sanitise sample_name (remove invalid Windows chars and spaces)

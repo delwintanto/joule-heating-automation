@@ -56,7 +56,8 @@ class _SystemSleepManager:
             enable (bool): If ``True`` starts preventing sleep immediately.
         """
         self.system = platform.system()  # Detect the current OS
-        self._process: Optional[subprocess.Popen] = None  # For macOS caffeinate
+        # For macOS caffeinate
+        self._process: Optional[subprocess.Popen] = None
         self._prev_state: Optional[int] = None  # For Windows execution state
 
         if enable:
@@ -116,7 +117,8 @@ class _SystemSleepManager:
             Safe to call multiple times or if ``start()`` was not called.
         """
         if self.system == "Windows" and self._prev_state is not None:
-            ctypes.windll.kernel32.SetThreadExecutionState(0x80000000)  # ES_CONTINUOUS
+            ctypes.windll.kernel32.SetThreadExecutionState(
+                0x80000000)  # ES_CONTINUOUS
         elif self.system == "Darwin" and self._process:
             self._process.terminate()
             try:
@@ -155,7 +157,7 @@ class _SystemSleepManager:
         exc_tb,
     ):
         """Context manager exit point - ensure sleep is re-enabled.
-        
+
         Args:
             exc_type: Exception type if any occurred.
             exc_val: Exception value if any occurred.

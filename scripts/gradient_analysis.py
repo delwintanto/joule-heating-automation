@@ -122,7 +122,8 @@ def detect_peaks_and_valleys(
         temperature = temperature[start_idx:]
 
     # Smooth the temperature data
-    temp_smooth = savgol_filter(temperature, window_length=window, polyorder=polyorder)
+    temp_smooth = savgol_filter(
+        temperature, window_length=window, polyorder=polyorder)
     gradient = np.gradient(temp_smooth, t)
 
     # Detect peaks and valleys directly from smoothed temperature
@@ -168,7 +169,8 @@ def detect_peaks_and_valleys(
         first_pair_start = len(t)  # if no pairs, set to end of data
 
     # Filter to only keep points before the first peak-valley pairs
-    gradient_minima = all_gradient_minima[all_gradient_minima < first_pair_start]
+    gradient_minima = all_gradient_minima[all_gradient_minima <
+                                          first_pair_start]
     drop_points = [p for p in all_drop_points if p < first_pair_start]
 
     # Pair each drop_point (gradient_maxima) with the next gradient_minima
@@ -282,15 +284,16 @@ if __name__ == "__main__":
                 results["combined_maxima"].dtype,
             )
 
-            # Calculate period and amplitude
+            # Calculate the average period and amplitude
             period = calculate_period(results["combined_maxima"], time)
-            amplitude = calculate_amplitude(
+            amplitude = calculate_amplitude(  # pylint: disable=invalid-name
                 results["combined_maxima"], results["combined_minima"], time, temp
             )
 
             print(f"Average period: {period:.2f} seconds")
             print(f"Average amplitude: {amplitude:.2f} °C")
-            print(f"Number of peak and valley pairs detected: {len(results["peak_valley_pairs"])}")
+            print(
+                f"Number of peak and valley pairs detected: {len(results["peak_valley_pairs"])}")
 
             def _plot_data(t, analysed_data):
                 """Plots temperature data with detected features and gradient.
@@ -309,8 +312,10 @@ if __name__ == "__main__":
                 gradient = analysed_data["gradient"]
 
                 _, ax1 = plt.subplots(figsize=(12, 6))
-                ax1.plot(time_data, temp_data, label="Original Temperature (°C)", color="black")
-                ax1.plot(time_data, temp_smooth, label="Smoothed Temperature (°C)", color="gray")
+                ax1.plot(time_data, temp_data,
+                         label="Original Temperature (°C)", color="black")
+                ax1.plot(time_data, temp_smooth,
+                         label="Smoothed Temperature (°C)", color="gray")
 
                 ax1.scatter(
                     np.array(time_data)[analysed_data["combined_maxima"]],

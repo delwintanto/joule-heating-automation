@@ -37,7 +37,7 @@ from temp_sensor_ycr import ycr_read_temp, YCRIRError
 def read_temperature(ycr_sensor, optris_sensor):
     """
     Read temperature from the appropriate sensor.
-    
+
     If temperature is below YCR's minimum operating range (300°C), use Optris.
     Otherwise, use YCR for better accuracy at higher temperatures.
 
@@ -55,7 +55,7 @@ def read_temperature(ycr_sensor, optris_sensor):
             return t_ycr
     except YCRIRError:
         pass
-    
+
     # Fall back to Optris for low temperatures or if YCR fails
     try:
         return optris_read_actual_temp(optris_sensor)

@@ -21,8 +21,10 @@ import pathlib
 
 from file_name import generate_filename
 
-_STATE = {"fh": None, "writer": None, "tmp_path": None, "final_path": None, "n": 0, "t0": None}
+_STATE = {"fh": None, "writer": None, "tmp_path": None,
+          "final_path": None, "n": 0, "t0": None}
 STREAM_FLUSH_EVERY = 1  # set to 10+ if you want fewer disk writes
+
 
 def save_start(sample_name, tuning=False):
     """Open a temporary, locked CSV file and write the header row.
@@ -69,7 +71,8 @@ def save_start(sample_name, tuning=False):
     w = csv.writer(fh)
 
     # Column header row (order matches your DataFrame usage)
-    w.writerow(["Time (s)", "Temperature (°C)", "Current (A)", "Voltage (V)", "Resistance (Ω)"])
+    w.writerow(["Time (s)", "Temperature (°C)", "Current (A)",
+               "Voltage (V)", "Resistance (Ω)"])
     fh.flush()
 
     _STATE.update({
@@ -132,7 +135,8 @@ def save_finalise():
 
         # Remove Hidden attribute (Windows)
         try:
-            ctypes.windll.kernel32.SetFileAttributesW(str(s["final_path"]), 0x80)
+            ctypes.windll.kernel32.SetFileAttributesW(
+                str(s["final_path"]), 0x80)
         except OSError:
             pass
         return str(s["final_path"])

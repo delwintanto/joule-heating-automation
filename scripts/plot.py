@@ -44,7 +44,7 @@ def _is_finite_number(x):
 def live_plot_init(sample_name, position="+30+30"):
     """
     Initialise the figure and axes for live plotting.
-    
+
     Args:
         sample_name: Title for the figure.
         position: Optional window position geometry.
@@ -148,7 +148,8 @@ def plot_data(df, columns=None, sample_name=None):
         None
     """
     if columns is None:
-        columns = ["Temperature (°C)", "Voltage (V)", "Current (A)", "Resistance (Ω)"]
+        columns = ["Temperature (°C)", "Voltage (V)",
+                   "Current (A)", "Resistance (Ω)"]
 
     colour_map = {
         "Temperature (°C)": "#C00000",

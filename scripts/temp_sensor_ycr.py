@@ -31,6 +31,7 @@ HWID_SUBSTR = "AQ03H99EA"  # YCR-D30180AR hardware ID substring
 
 class YCRIRError(Exception):
     """Base exception for IR sensor related errors."""
+
     def __init__(self, message):
         self.message = message
         super().__init__(self.message)
@@ -228,6 +229,7 @@ def ycr_read_avg_time(temp_sensor):
     except (TimeoutError, OSError, minimalmodbus.ModbusException):
         return float('nan')
 
+
 def ycr_set_avg_time(temp_sensor, *, avg_time):
     """Set the averaging time window for temperature readings.
 
@@ -244,7 +246,8 @@ def ycr_set_avg_time(temp_sensor, *, avg_time):
         YCRIRError: If avg_time is outside valid range.
     """
     if not (avg_time == 0 or 0.1 <= avg_time <= 999.9):
-        raise YCRIRError("Averaging time must be 0 (real-time) or between 0.1 and 999.9 seconds")
+        raise YCRIRError(
+            "Averaging time must be 0 (real-time) or between 0.1 and 999.9 seconds")
 
     try:
         regs = _float_to_regs_be_lowfirst(avg_time)

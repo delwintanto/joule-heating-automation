@@ -81,6 +81,7 @@ class RowCounter:
     Attributes:
         value (int): The current row value.
     """
+
     def __init__(self, start=0):
         """Initialise the RowCounter with a starting value.
 
@@ -183,7 +184,8 @@ def _save_settings(file_vars):
         # Save to text file
         else:
             with open(file_path, "w", encoding="utf-8", newline="") as file:
-                file.writelines(f"{key}: {value}\n" for key, value in file_vars.items())
+                file.writelines(f"{key}: {value}\n" for key,
+                                value in file_vars.items())
         _show_info("Parameters saved successfully!")
     except IOError as e:
         _show_error(f"Error saving file: {e}")
@@ -197,7 +199,8 @@ def _load_settings(target_vars):
     """
     file_path = filedialog.askopenfilename(
         initialdir=DEFAULTDIR,
-        filetypes=[("Text Files", "*.txt"), ("JSON Files", "*.json"), ("All Files", "*.*")]
+        filetypes=[("Text Files", "*.txt"),
+                   ("JSON Files", "*.json"), ("All Files", "*.*")]
     )
     if not file_path:
         return
@@ -243,13 +246,15 @@ def _radio_button(master, label_text, options, var, row_counter):
         row_counter (RowCounter): Row counter for widget placement.
     """
     row = row_counter.next()
-    ttk.Label(master, text=label_text).grid(row=row, column=0, sticky=tk.W, padx=5, pady=2)
+    ttk.Label(master, text=label_text).grid(
+        row=row, column=0, sticky=tk.W, padx=5, pady=2)
     for i, (text, tooltip) in enumerate(options, 1):
         rb = ttk.Radiobutton(
             master,
             text=text,
             variable=var,
-            value=text.split()[0] if label_text.startswith("Temperature") else text
+            value=text.split()[0] if label_text.startswith(
+                "Temperature") else text
         )
         rb.grid(row=row, column=i, sticky=tk.W, padx=5, pady=2)
         ToolTip(rb, msg=tooltip, delay=0.3)
@@ -324,7 +329,8 @@ def gui_cc():
         nonlocal experiment_started
         try:
             # Checks for missing entries
-            missing = _check_empty_fields({k: (e.var, None) for k, e in entries.items()})
+            missing = _check_empty_fields(
+                {k: (e.var, None) for k, e in entries.items()})
             if missing:
                 return _show_error(f"Missing fields: {', '.join(missing)}")
 
@@ -358,7 +364,8 @@ def gui_cc():
                 return
 
             experiment_started = True  # Sets flag when experiment is properly started
-            _show_info("Starting experiment.\nDo not touch the sample or power supply!")
+            _show_info(
+                "Starting experiment.\nDo not touch the sample or power supply!")
             gui.destroy()
         except ValueError:
             _show_error("Check number formatting. Use commas between values.")
@@ -540,8 +547,10 @@ def gui_pid(start_experiment_callback=None):
         )
 
         for i, (text, val) in enumerate([("Auto", 0), ("Manual", 1)], 1):
-            rb = ttk.Radiobutton(gui, text=text, variable=tuning_mode, value=val)
-            rb.grid(row=dynamic_row.value - 1, column=i, sticky=tk.W, padx=5, pady=2)
+            rb = ttk.Radiobutton(
+                gui, text=text, variable=tuning_mode, value=val)
+            rb.grid(row=dynamic_row.value - 1, column=i,
+                    sticky=tk.W, padx=5, pady=2)
             tooltip_msg = (
                 "Uses relay feedback to automatically tune the PID controller.\n"
                 "Select this option if PID gains are unknown."
@@ -556,10 +565,12 @@ def gui_pid(start_experiment_callback=None):
 
         # Draws PID fields based on tuning mode
         if tuning_mode.get() == 1:
-            draw_fields({k: pid_vars[k] for k in ("Kp", "Ki", "Kd")}, dynamic_row.next(3))
+            draw_fields({k: pid_vars[k] for k in (
+                "Kp", "Ki", "Kd")}, dynamic_row.next(3))
         else:
             draw_fields(
-                {"Tuning Duration (s)": pid_vars["Tuning Duration (s)"]}, dynamic_row.next()
+                {"Tuning Duration (s)": pid_vars["Tuning Duration (s)"]}, dynamic_row.next(
+                )
             )
 
         return dynamic_row.value + len(pid_vars)
@@ -604,11 +615,11 @@ def gui_pid(start_experiment_callback=None):
         try:
             # Checks for missing entries
             missing = (
-                _check_empty_fields(common_fields) + \
+                _check_empty_fields(common_fields) +
                 _check_empty_fields(
                     discrete_fields if input_mode.get() == "Discrete"
                     else continuous_fields
-                ) + \
+                ) +
                 _check_empty_fields(
                     {k: pid_vars[k] for k in ("Kp", "Ki", "Kd")} if tuning_mode.get() == 1
                     else {"Tuning Duration (s)": pid_vars["Tuning Duration (s)"]}
@@ -636,7 +647,8 @@ def gui_pid(start_experiment_callback=None):
             # Handles temperature input based on the selected mode
             if input_mode.get() == "Discrete":
                 # Discrete mode - parse lists of temperatures and durations
-                temps, durs = [_parse_floats(v[0].get()) for v in discrete_fields.values()]
+                temps, durs = [_parse_floats(v[0].get())
+                               for v in discrete_fields.values()]
                 if len(temps) != len(durs):
                     raise ValueError("Mismatch in temperatures and durations.")
                 if not all(x > 0 for x in durs):
@@ -644,21 +656,26 @@ def gui_pid(start_experiment_callback=None):
                 output["temps"], output["durs"] = temps, durs
             else:
                 # Continuous mode - calculates temperatures from range
-                s = _parse_floats(continuous_fields["Start Temp (°C)"][0].get())
-                s_dur = _parse_floats(continuous_fields["Initial Heating Duration (s)"][0].get())
+                s = _parse_floats(
+                    continuous_fields["Start Temp (°C)"][0].get())
+                s_dur = _parse_floats(
+                    continuous_fields["Initial Heating Duration (s)"][0].get())
                 e = float(continuous_fields["End Temp (°C)"][0].get())
                 st = float(continuous_fields["Step Temp (°C)"][0].get())
                 dur = float(continuous_fields["Step Duration (s)"][0].get())
 
                 if len(s) != len(s_dur):
-                    raise ValueError("Mismatch in starting temperatures and durations.")
+                    raise ValueError(
+                        "Mismatch in starting temperatures and durations.")
                 if s[-1] == e and st != 0:
-                    raise ValueError("Zero temperature difference with non-zero step.")
+                    raise ValueError(
+                        "Zero temperature difference with non-zero step.")
                 if st == 0 and s[-1] != e:
                     raise ValueError("Non-zero temp range needs step.")
                 st = abs(st) if s[-1] < e else -abs(st)
                 steps = int((e - s[-1]) / st) + 1
-                output["temps"] = s + [round(s[-1] + (i + 1) * st, 1) for i in range(steps - 1)]
+                output["temps"] = s + [round(s[-1] + (i + 1) * st, 1)
+                                       for i in range(steps - 1)]
                 output["durs"] = s_dur + [dur] * (steps - 1)
 
             # Handles PID parameters based on tuning mode
@@ -667,7 +684,8 @@ def gui_pid(start_experiment_callback=None):
                     float(pid_vars[k][0].get()) for k in ("Kp", "Ki", "Kd")
                 ]
             else:
-                output["tuning_time"] = float(pid_vars["Tuning Duration (s)"][0].get())
+                output["tuning_time"] = float(
+                    pid_vars["Tuning Duration (s)"][0].get())
 
             # Confirms before starting the experiment
             total_time = _sec_to_hhmmss(
@@ -685,7 +703,8 @@ def gui_pid(start_experiment_callback=None):
                 return
 
             experiment_started = True
-            _show_info("Starting experiment.\nDo not touch the sample or power supply!")
+            _show_info(
+                "Starting experiment.\nDo not touch the sample or power supply!")
             gui.destroy()
 
             # Calls the callback function if provided

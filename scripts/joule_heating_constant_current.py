@@ -14,6 +14,8 @@ Last updated : 04 Nov 2025
 
 from datetime import datetime
 import os
+import signal
+from threading import Event
 import time
 
 import pandas as pd
@@ -44,7 +46,16 @@ COOLDOWN_BUFFER = 10  # Extra seconds to wait after T drops below MIN_TEMP
 
 # -------------------- Helper functions --------------------
 
-def _read_data(power_supply, ycr_sensor, optris_sensor):
+# Event set by SIGINT handler to request skipping current step / ending cooldown
+stop_event = Event()
+
+
+def _sigint_handler(_sig, _frame):
+    """SIGINT handler: sets the stop flag."""
+    stop_event.set()
+
+
+def _read_data(power_supply, ycr_sensor, optris_sensor, cool=False):
     """Read temperature, voltage and current, and compute resistance.
 
     Attempts to read temperature via :func:`temp_sensor_utils.read_temperature`.
@@ -59,8 +70,8 @@ def _read_data(power_supply, ycr_sensor, optris_sensor):
             is ``voltage / current`` or ``float('inf')`` when current is zero.
     """
     t_read = read_temperature(ycr_sensor, optris_sensor)
-    v_read = etm_read_voltage(power_supply)
-    i_read = etm_read_current(power_supply)
+    v_read = etm_read_voltage(power_supply) if not cool else 0.0
+    i_read = etm_read_current(power_supply) if not cool else 0.0
     r_read = v_read / i_read if i_read != 0 else float("inf")
     return t_read, v_read, i_read, r_read
 
@@ -108,12 +119,13 @@ def _update_plot(fig, axes, lines, data):
         None
     """
     live_plot_updt(
-        fig, axes[0], axes[1], axes[2], 
+        fig, axes[0], axes[1], axes[2],
         lines[0], lines[1], lines[2],
         data["time"], data["temperature"], data["current"], data["resistance"],
     )
 
 # -------------------- Joule heating --------------------
+
 
 def joule_heating_run(
     power_supply,
@@ -151,10 +163,13 @@ def joule_heating_run(
         time and ``data`` is a dict of lists containing the recorded series.
     """
     # Initialise empty data lists where measurements will be stored in
-    data = {k: [] for k in ["temperature", "time", "voltage", "current", "resistance"]}
+    data = {k: []
+            for k in ["temperature", "time", "voltage", "current", "resistance"]}
 
-    ycr_set_laser(ycr_sensor, on=True)  # Turn ON the YCR IR sensor laser pointer
-    optris_set_laser(optris_sensor, on=True)  # Turn ON the Optris IR sensor laser pointer
+    # Turn ON the YCR IR sensor laser pointer
+    ycr_set_laser(ycr_sensor, on=True)
+    # Turn ON the Optris IR sensor laser pointer
+    optris_set_laser(optris_sensor, on=True)
 
     time_start = None  # Start time of the experiment
     total_steps = len(currs)
@@ -174,17 +189,26 @@ def joule_heating_run(
             try:
                 time_now = time.monotonic()
 
+                # If SIGINT was received, request to skip this heating step.
+                if stop_event.is_set():
+                    stop_event.clear()
+                    break
+
                 if time_start is None:
                     time_start = time_now  # Record the start time of the experiment
 
-                t_read, v_read, i_read, r_read = _read_data(power_supply, ycr_sensor, optris_sensor)
-                _append_data(data, time_start, time_now, t_read, v_read, i_read, r_read)
+                t_read, v_read, i_read, r_read = _read_data(
+                    power_supply, ycr_sensor, optris_sensor)
+                _append_data(data, time_start, time_now,
+                             t_read, v_read, i_read, r_read)
                 save_row(time_now - time_start, t_read, i_read, v_read, r_read)
 
                 if t_read >= MAX_TEMP:
-                    etm_set_onoff(power_supply, on=False)  # PSU OFF if temperature exceeds limit
+                    # PSU OFF if temperature exceeds limit
+                    etm_set_onoff(power_supply, on=False)
 
-                _update_plot(fig, (ax1, ax2, ax3), (line1, line2, line3), data)  # Update live plot
+                _update_plot(fig, (ax1, ax2, ax3), (line1, line2,
+                             line3), data)  # Update live plot
 
                 print(
                     f"\r\033[1mStep {idx}/{total_steps}\033[0m - "
@@ -199,9 +223,11 @@ def joule_heating_run(
                 )
                 time.sleep(LOOP_INTERVAL)  # Sleep to prevent CPU overload
             except KeyboardInterrupt:
-                break
+                # Ensure the stop_event is set so other loops observe the request
+                stop_event.set()
 
-        _update_plot(fig, (ax1, ax2, ax3), (line1, line2, line3), data)  # Update live plot
+        _update_plot(fig, (ax1, ax2, ax3), (line1, line2, line3),
+                     data)  # Update live plot
         print(
             f"\n\033[1;32m[{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}] "
             "Heating completed!\033[0m"
@@ -250,11 +276,20 @@ def cooldown(
     while True:
         try:
             time_now = time.monotonic()
-            t_read, v_read, i_read, r_read = _read_data(power_supply, ycr_sensor, optris_sensor)
-            _append_data(data, time_start, time_now, t_read, v_read, i_read, r_read)
+
+            # If SIGINT was received, request to end cooldown early.
+            if stop_event.is_set():
+                stop_event.clear()
+                break
+
+            t_read, v_read, i_read, r_read = _read_data(
+                power_supply, ycr_sensor, optris_sensor, cool=True)
+            _append_data(data, time_start, time_now,
+                         t_read, v_read, i_read, r_read)
             save_row(time_now - time_start, t_read, i_read, v_read, r_read)
 
-            _update_plot(fig, (ax1, ax2, ax3), (line1, line2, line3), data)  # Update live plot
+            _update_plot(fig, (ax1, ax2, ax3), (line1, line2,
+                         line3), data)  # Update live plot
 
             print(
                 "\r\033[1;34mCooldown\033[0m - "
@@ -278,15 +313,18 @@ def cooldown(
 
             time.sleep(LOOP_INTERVAL)  # Sleep to prevent CPU overload
         except KeyboardInterrupt:
-            break
+            stop_event.set()
     print(
-            f"\n\033[1;32m[{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}] "
-            "Cooldown completed!\033[0m"
-        )
+        f"\n\033[1;32m[{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}] "
+        "Cooldown completed!\033[0m"
+    )
     return data
 
 
 if __name__ == "__main__":
+    # Install the SIGINT handler so Ctrl+C sets the flag and we can exit cleanly
+    signal.signal(signal.SIGINT, _sigint_handler)
+
     os.system("cls" if os.name == "nt" else "clear")
     print(
         f"[{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}] "
@@ -304,7 +342,7 @@ if __name__ == "__main__":
         optris_temp_sensor = optris_open()
         psu = etm_open()
     except (YCRIRError, OptrisIRError, PSUError) as e:
-        raise SystemExit(f"Error initializing devices: {e}")
+        raise SystemExit(f"Error initializing devices: {e}") from e
 
     print()
     # Live plot
@@ -360,12 +398,22 @@ if __name__ == "__main__":
     finally:
         try:
             final_csv_path = save_finalise()  # Finalise and save data
+        except OSError as e:
+            print(f"Error saving final data: {e}")
+
+        try:
+            close_plot()
             etm_set_onoff(psu, on=False)
             ycr_set_laser(ycr_temp_sensor, on=False)
             optris_set_laser(optris_temp_sensor, on=False)
-            close_plot()
-        except (OSError, YCRIRError, OptrisIRError, PSUError) as e:
+        except (YCRIRError, OptrisIRError, PSUError) as e:
             print(f"Error during cleanup: {e}")
+
+        try:
+            # Restore default SIGINT handler so system behavior returns to normal.
+            signal.signal(signal.SIGINT, signal.default_int_handler)
+        except (ValueError, OSError):
+            pass
 
     if final_csv_path:
         saved_data = pd.read_csv(final_csv_path)
