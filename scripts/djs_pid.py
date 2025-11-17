@@ -9,11 +9,9 @@ Last updated : 04 Nov 2025
 """
 
 import os
-import signal
 import time
 from collections import deque
 from datetime import datetime
-from threading import Event
 from tkinter import messagebox
 
 import pandas as pd
@@ -21,22 +19,20 @@ from simple_pid import PID
 
 from colour_map import temp_colour
 import gradient_analysis as ga
+from device_utils import close_all, init_devices, enable_lasers
 from gui import gui_pid
-from plot import plot_data, live_plot_init, live_plot_updt, close_plot
+from plot import plot_data, live_plot_init, update_live_plot
 from power_supply_etm import (
-    etm_open,
     etm_set_onoff,
     etm_set_current,
     etm_set_voltage,
     etm_read_voltage,
-    PSUError,
 )
 from print_summary import print_summary, print_steps
 from save_data import save_start, save_row, save_finalise
+from signal_utils import register_sigint_handler, stop_event
 from system_sleep import prevent_sleep
-from temp_sensor_optris import optris_open, optris_set_laser, OptrisIRError
 from temp_sensor_utils import read_temperature
-from temp_sensor_ycr import ycr_open, ycr_set_laser, YCRIRError
 
 
 # Constants
@@ -47,16 +43,7 @@ LOOP_INTERVAL = 0.1  # Loop interval to prevent CPU overload (s)
 YCR_MIN_RANGE = 300
 
 
-# -------------------- Helper functions --------------------
-
-# Event set by SIGINT handler to request skipping current step / ending cooldown
-stop_event = Event()
-
-
-def _sigint_handler(_sig, _frame):
-    """SIGINT handler: set stop flag for loops to observe."""
-    stop_event.set()
-
+# -------------------- Joule heating --------------------
 
 def auto_tune_pid(
     sample_name,
@@ -110,11 +97,8 @@ def auto_tune_pid(
     switch_interval = 5  # Seconds to switch between high and low current
     time_start = time.monotonic()
 
-    try:
-        etm_set_voltage(power_supply, voltage=v_set)
-        etm_set_onoff(power_supply, on=True)
-    except PSUError as e:
-        raise SystemExit(f"Failed to start auto-tuning: {e}") from e
+    etm_set_voltage(power_supply, voltage=v_set)
+    etm_set_onoff(power_supply, on=True)
 
     while (elapsed := time.monotonic() - time_start) < tuning_durr:
         try:
@@ -151,18 +135,14 @@ def auto_tune_pid(
             lp_temp.append(t_read)
             lp_curr.append(i_read)
             lp_res.append(r_read)
-            live_plot_updt(
+            update_live_plot(
                 fig,
-                ax_temp,
-                ax_curr,
-                ax_res,
-                line_temp,
-                line_curr,
-                line_res,
-                lp_time,
-                lp_temp,
-                lp_curr,
-                lp_res,
+                (ax_temp, ax_curr, ax_res),
+                (line_temp, line_curr, line_res),
+                x=lp_time,
+                y1=lp_temp,
+                y2=lp_curr,
+                y3=lp_res,
             )
             save_row(elapsed, t_read, i_read, v_read, r_read)
             time.sleep(LOOP_INTERVAL)  # Sleep to prevent CPU overload
@@ -229,7 +209,7 @@ def auto_tune_pid(
     return kp, ki, kd, lp_time, lp_temp, lp_curr, lp_res, time_start
 
 
-def run_experiment(
+def run_djs_pid(
     sample_name,
     kp,
     ki,
@@ -286,8 +266,7 @@ def run_experiment(
     ) = live_plot_init(sample_name)
 
     # Turn on both sensor lasers
-    ycr_set_laser(ycr_sensor, on=True)
-    optris_set_laser(optris_sensor, on=True)
+    enable_lasers(ycr_sensor, optris_sensor, on=True)
 
     # Run PID gains tuning
     if tuning == "Auto tuning":
@@ -381,18 +360,16 @@ def run_experiment(
                 for k, v in zip(lp_dataset.keys(), [t_read, elapsed, curr, r_read]):
                     lp_dataset[k].append(v)
 
-                live_plot_updt(
+                update_live_plot(
                     fig,
-                    ax_temp,
-                    ax_curr,
-                    ax_res,
-                    line_temp,
-                    line_curr,
-                    line_res,
-                    lp_dataset["time"],
-                    lp_dataset["temperature"],
-                    lp_dataset["current"],
-                    lp_dataset["resistance"],
+                    (ax_temp, ax_curr, ax_res),
+                    (line_temp, line_curr, line_res),
+                    data={
+                        "time": lp_dataset["time"],
+                        "temperature": lp_dataset["temperature"],
+                        "current": lp_dataset["current"],
+                        "resistance": lp_dataset["resistance"],
+                    },
                 )
                 print(
                     f"\r\033[1mStep {idx}/{total_steps} - "
@@ -419,8 +396,7 @@ def run_experiment(
         f"\n\033[1;32m[{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}] "
         "Heating completed!\033[0m"
     )
-    etm_set_current(power_supply, current=0)
-    etm_set_voltage(power_supply, voltage=0)
+
     etm_set_onoff(power_supply, on=False)
 
     if cooldown_dur > 0:
@@ -444,18 +420,16 @@ def run_experiment(
                 for k, v in zip(lp_dataset.keys(), [t_read, elapsed, i_read, r_read]):
                     lp_dataset[k].append(v)
 
-                live_plot_updt(
+                update_live_plot(
                     fig,
-                    ax_temp,
-                    ax_curr,
-                    ax_res,
-                    line_temp,
-                    line_curr,
-                    line_res,
-                    lp_dataset["time"],
-                    lp_dataset["temperature"],
-                    lp_dataset["current"],
-                    lp_dataset["resistance"],
+                    (ax_temp, ax_curr, ax_res),
+                    (line_temp, line_curr, line_res),
+                    data={
+                        "time": lp_dataset["time"],
+                        "temperature": lp_dataset["temperature"],
+                        "current": lp_dataset["current"],
+                        "resistance": lp_dataset["resistance"],
+                    },
                 )
                 print(
                     "\r\033[1;34mCooldown\033[0m - "
@@ -478,89 +452,75 @@ def run_experiment(
 
 if __name__ == "__main__":
     # Register SIGINT handler so Ctrl+C sets `stop_event` and requests skip/stop.
-    signal.signal(signal.SIGINT, _sigint_handler)
+    with register_sigint_handler():
+        os.system("cls" if os.name == "nt" else "clear")
+        print(
+            f"[{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}] "
+            "Starting the PID controlled Joule heating program...\n"
+        )
 
-    os.system("cls" if os.name == "nt" else "clear")
-    print(
-        f"[{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}] "
-        "Starting the PID controlled Joule heating program...\n"
-    )
-
-    with prevent_sleep():  # Prevent system sleep during experiment
-        (
-            sample_id,
-            sp_temp,
-            heating_times,
-            max_current,
-            max_voltage,
-            cooldown_duration,
-            kp_gain,
-            ki_gain,
-            kd_gain,
-            tuning_dur,
-            tuning_method,
-        ) = gui_pid()  # Get user inputs from GUI
-
-        if sample_id is None:
-            raise SystemExit("Program stopped.")
-
-        # Initialise temperature sensors and power supply
-        ycr_temp_sensor = ycr_open()
-        optris_temp_sensor = optris_open()
-        psu = etm_open()
-
-        try:
-            # Run the experiment
-            kp_gain, ki_gain, kd_gain = run_experiment(
+        with prevent_sleep():  # Prevent system sleep during experiment
+            (
                 sample_id,
-                kp_gain,
-                ki_gain,
-                kd_gain,
-                tuning_dur,
-                ycr_temp_sensor,
-                optris_temp_sensor,
-                psu,
                 sp_temp,
                 heating_times,
                 max_current,
                 max_voltage,
                 cooldown_duration,
+                kp_gain,
+                ki_gain,
+                kd_gain,
+                tuning_dur,
                 tuning_method,
-            )
-        finally:
-            try:
-                final_csv_path = save_finalise()  # Finalise and save data
-            except OSError as e:
-                print(f"Error saving final data: {e}")
+            ) = gui_pid()  # Get user inputs from GUI
+
+            if sample_id is None:
+                raise SystemExit("Program stopped.")
+
+            # Initialise temperature sensors and power supply
+            psu, ycr_temp_sensor, optris_temp_sensor = init_devices()
 
             try:
-                close_plot()
-                etm_set_onoff(psu, on=False)
-                ycr_set_laser(ycr_temp_sensor, on=False)
-                optris_set_laser(optris_temp_sensor, on=False)
-            except (YCRIRError, OptrisIRError, PSUError) as e:
-                print(f"Error during cleanup: {e}")
+                # Run the experiment
+                kp_gain, ki_gain, kd_gain = run_djs_pid(
+                    sample_id,
+                    kp_gain,
+                    ki_gain,
+                    kd_gain,
+                    tuning_dur,
+                    ycr_temp_sensor,
+                    optris_temp_sensor,
+                    psu,
+                    sp_temp,
+                    heating_times,
+                    max_current,
+                    max_voltage,
+                    cooldown_duration,
+                    tuning_method,
+                )
+            finally:
+                try:
+                    final_csv_path = save_finalise()  # Finalise and save data
+                except OSError as e:
+                    print(f"Error saving final data: {e}")
 
-            try:
-                # Restore default SIGINT handler so system behavior returns to normal.
-                signal.signal(signal.SIGINT, signal.default_int_handler)
-            except (ValueError, OSError):
-                pass
+                close_all(psu, ycr_temp_sensor, optris_temp_sensor)
 
-        if final_csv_path:
-            saved_data = pd.read_csv(final_csv_path)
-            print_summary(
-                sample_id,
-                saved_data,
-                final_csv_path,
-                pid_curr=max_current,
-                pid_volt=max_voltage,
-                pid_gains=(kp_gain, ki_gain, kd_gain),
-            )
-            print_steps(sp_temp, heating_times, cc=False)
+                if final_csv_path:
+                    saved_data = pd.read_csv(final_csv_path)
+                    print_summary(
+                        sample_id,
+                        saved_data,
+                        final_csv_path,
+                        pid_curr=max_current,
+                        pid_volt=max_voltage,
+                        pid_gains=(kp_gain, ki_gain, kd_gain),
+                    )
+                    print_steps(sp_temp, heating_times, cc=False)
 
-            plot_data(
-                saved_data,
-                columns=["Temperature (°C)", "Current (A)", "Resistance (Ω)"],
-                sample_name=sample_id,
-            )
+                    plot_data(
+                        saved_data,
+                        columns=[
+                            "Temperature (°C)", "Current (A)", "Resistance (Ω)"],
+                        sample_name=sample_id,
+                    )

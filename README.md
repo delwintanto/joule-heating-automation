@@ -1,486 +1,407 @@
 # Joule Heating Automation
 
-A Python-based experimental control system for automating Joule heating experiments and material sintering on Windows systems. The system automates temperature regulation, data logging, and provides real-time visualization during experiments.
+A comprehensive Python-based system for controlling joule-heating experiments with live plotting, real-time data logging, PID temperature control, and reliable hardware management.
 
 ## Overview
 
-This project provides two main experiment modes:
+This repository provides an automated framework for running joule-heating experiments on resistive samples. The system supports two primary heating modes:
 
-1. **Constant Current Mode** (`joule_heating_constant_current.py`) - Apply fixed current levels for fixed durations
-2. **PID Temperature Control Mode** (`joule_heating_pid.py`) - Maintain target temperatures using closed-loop PID control with automatic gain tuning
+1. **Constant Current Mode** — Direct constant-current heating with live monitoring.
+2. **PID-Controlled Mode** — Closed-loop temperature control using PID feedback.
 
-Both modes feature:
-- Dual infrared temperature sensors (YCR for high temps, Optris for low temps)
-- Real-time data visualization and live plotting
-- Automatic data logging to CSV
-- Safety temperature limits and monitoring
-- Windows system sleep prevention during long experiments
+Both modes feature live matplotlib plotting, streaming CSV data logging, and graceful hardware shutdown with Ctrl+C support.
+
+**⚠️ Safety Warning:** These scripts command real hardware (power supplies, temperature sensors, lasers). Only run with proper safety interlocks, current-limiting protection, and after thorough offline testing.
+
+## Table of Contents
+
+- [Requirements](#requirements)
+- [Quick Start](#quick-start)
+- [Project Structure](#project-structure)
+- [Core Modules](#core-modules)
+- [Experiment Scripts](#experiment-scripts)
+- [Device Drivers](#device-drivers)
+- [Utility Modules](#utility-modules)
+- [Recent Refactors](#recent-refactors)
+- [Architecture & Patterns](#architecture--patterns)
+- [Pending Work](#pending-work)
+- [FAQ & Troubleshooting](#faq--troubleshooting)
+
+## Requirements
+
+### Python Version
+- Python 3.8+ (tested on 3.10+)
+
+### Core Dependencies
+Install via pip:
+
+```bash
+pip install matplotlib pandas simple-pid minimalmodbus pyserial
+```
+
+### Optional
+- Custom device drivers (if using alternate temperature sensors or power supplies)
+- Jupyter or IPython for interactive data analysis
+
+## Quick Start
+
+### Running an Experiment
+
+From the `scripts` directory in PowerShell:
+
+```powershell
+# Constant-current heating run
+python .\djs_cc.py
+
+# PID-controlled heating run
+python .\djs_pid.py
+```
+
+Both scripts will:
+1. Initialize hardware (power supply, temperature sensors, optional lasers).
+2. Launch a live matplotlib window showing temperature, voltage, and current in real time.
+3. Stream measurements to a CSV file.
+4. Gracefully shut down on Ctrl+C.
+
+### Expected Output
+
+- **Console:** Progress messages, phase transitions, data summaries, and any warnings.
+- **Plot Window:** Three subplots (temperature vs. time, voltage vs. time, current vs. time) updated live.
+- **CSV File:** Columns for elapsed time, voltage, current, and resistance, written per measurement.
 
 ## Project Structure
 
 ```
 joule-heating-automation/
-├── scripts/
-│   ├── joule_heating_constant_current.py    # Main: Constant current experiment driver
-│   ├── joule_heating_pid.py                 # Main: PID temperature control driver
-│   ├── gui.py                               # Tkinter GUI for experiment parameters
-│   │
-│   ├── power_supply_etm.py                  # eTM-5050PC PSU Modbus RTU interface
-│   ├── temp_sensor_ycr.py                   # YCR-D30180AR IR sensor (Modbus RTU)
-│   ├── temp_sensor_optris.py                # Optris CT/CTlaser IR sensor (binary protocol)
-│   ├── port_detect.py                       # Serial port discovery by hardware ID
-│   │
-│   ├── plot.py                              # Real-time matplotlib visualization
-│   ├── save_data.py                         # CSV streaming with Windows file locking
-│   ├── file_name.py                         # Experiment filename generation
-│   │
-│   ├── gradient_analysis.py                 # Peak/valley detection and analysis
-│   ├── colour_map.py                        # ANSI temperature color codes
-│   ├── print_summary.py                     # Experiment summary output
-│   │
-│   ├── system_sleep.py                      # Cross-platform system sleep prevention
-│
-└── .github/
-    └── copilot-instructions.md              # AI coding agent guidelines
+├── scripts/                          # Main experiment and helper modules
+│   ├── README.md                     # This file
+│   ├── djs_cc.py
+│   ├── djs_pid.py
+│   ├── device_utils.py               # Device initialization & shutdown helpers
+│   ├── experiment_utils.py           # Shared measurement & data-append helpers
+│   ├── signal_utils.py               # Centralized SIGINT/stop-event handling
+│   ├── plot.py                       # Live plotting helpers
+│   ├── save_data.py                  # Streaming CSV writer
+│   ├── port_detect.py                # Serial port detection
+│   ├── temp_sensor_ycr.py            # YCR temperature sensor driver
+│   ├── temp_sensor_optris.py         # Optris temperature sensor driver
+│   ├── temp_sensor_utils.py          # Temperature sensor utilities
+│   ├── power_supply_etm.py           # ETM power supply driver
+│   ├── colour_map.py                 # Plotting color/style utilities
+│   ├── gradient_analysis.py          # Post-processing analysis tools
+│   ├── print_summary.py              # Experiment summary printer
+│   ├── system_sleep.py               # System sleep/wake utilities
+│   ├── file_name.py                  # Experiment file naming helpers
+│   ├── gui.py                        # GUI utilities (if present)
+│   └── __pycache__/                  # Python bytecode cache
 ```
-
----
 
 ## Core Modules
 
-### Hardware Control
+### Experiment Scripts
 
-#### `power_supply_etm.py`
-- **Device**: eTM-5050PC Power Supply (Modbus RTU)
-- **Features**:
-  - Turn output ON/OFF
-  - Set/read voltage (0-50V) and current (0-infinite A)
-  - Automatic serial port discovery via hardware ID
-  - Exception handling with `PSUError`
+#### `djs_cc.py`
+**Purpose:** Run a constant-current heating experiment.
 
-#### `temp_sensor_ycr.py`
-- **Device**: YCR-D30180AR IR Thermometer (Modbus RTU, 9600 baud)
-- **Features**:
-  - Read temperature (°C)
-  - Toggle laser pointer ON/OFF
-  - Operating range: 300-2000°C (accurate above 300°C)
-  - Custom 32-bit float packing for Modbus communication
-  - Exception handling with `YCRIRError`
-
-#### `temp_sensor_optris.py`
-- **Device**: Optris CT/CTlaser/CTvideo (Binary protocol, 115200 baud)
-- **Features**:
-  - Read actual/process/head/box temperatures
-  - Set emissivity and transmission
-  - Toggle laser pointer and "Smart Averaging"
-  - Operating range: 50-400°C (better for low temperatures)
-  - Exception handling with `OptrisIRError`
-
-#### `port_detect.py`
-- **Purpose**: Automatic serial port discovery by hardware ID substring matching
-- **Function**: `find_port_by_hwid(hwid_substr)` - returns COM port without manual specification
-
----
-
-### Experiment Control
-
-#### `joule_heating_constant_current.py`
-Main script for constant-current experiments.
-
-**Features:**
-- Sequential current steps with configurable durations
-- Dual-sensor temperature reading with automatic switching:
-  - YCR for temps ≥ 300°C (high accuracy)
-  - Optris fallback for temps < 300°C
-- Real-time live plotting (temperature, current, resistance)
-- Automatic cooldown phase after heating
-- Safety limits: MAX_TEMP = 1200°C, MIN_TEMP = 50°C
+**Workflow:**
+1. Initialize devices (power supply, YCR/Optris sensors, optional lasers).
+2. Run heating phase (user-specified duration, constant current).
+3. Cool-down phase (passively or actively, depending on configuration).
+4. Collect t/v/i/r measurements and log to CSV.
+5. Update live plot every cycle.
 
 **Key Functions:**
-- `_read_temperature(ycr_sensor, optris_sensor)` - Selects appropriate sensor
-- `joule_heating_run()` - Main experiment loop (heating phase)
-- `cooldown()` - Records temperature during cooldown
+- `main()` — experiment orchestration
+- `run_experiment()` — heating loop with measurement & logging
 
-**Execution:**
-```bash
-python joule_heating_constant_current.py
+**Usage:**
+```python
+python .\djs_cc.py
+# Follow console prompts to set current, duration, and file name.
 ```
 
-#### `joule_heating_pid.py`
-Main script for PID-controlled temperature experiments.
+#### `djs_pid.py`
+**Purpose:** Run a PID-controlled heating experiment.
 
-**Features:**
-- Auto-tuning via Ziegler-Nichols relay feedback method
-- Manual PID gain entry option
-- Dual-sensor temperature reading (same strategy as constant current)
-- Temperature setpoint control with configurable ramp/hold phases
-- Real-time PID output visualization
-- Gradient analysis for peak detection during tuning
+**Workflow:**
+1. Initialize devices (power supply, sensors, optional lasers).
+2. Optional auto-tuning phase (PID parameter calibration).
+3. Heating phase (closed-loop control to target temperature).
+4. Cool-down phase (passive or active).
+5. Collect t/v/i/r measurements and log to CSV.
+6. Update live plot every cycle.
 
 **Key Functions:**
-- `_read_temperature(ycr_sensor, optris_sensor)` - Sensor selection logic
-- `auto_tune_pid()` - Automatic PID parameter tuning
-- `run_experiment()` - Main PID control loop
+- `main()` — experiment orchestration
+- `auto_tune_pid()` — PID parameter auto-tuning
+- `run_experiment()` — closed-loop heating loop with PID control
 
-**Execution:**
-```bash
-python joule_heating_pid.py
+**Usage:**
+```python
+python .\djs_pid.py
+# Follow prompts to set target temperature, PID parameters, and file name.
 ```
 
----
+### Helper Modules
 
-### User Interface
-
-#### `gui.py`
-Tkinter-based GUI with two experiment modes.
-
-**Components:**
-- `LabeledEntry` widget - Composite label + entry + tooltip
-- `RowCounter` class - Tracks grid placement
-- `gui_cc()` - Constant current mode GUI (currents, durations, max voltage)
-- `gui_pid()` - PID mode GUI (setpoints, durations, PID gains, tuning method)
-
-**Features:**
-- Tooltips for parameter hints
-- Default directory for saving experiments
-- JSON or txt import/export of experiment parameters
-
----
-
-### Data Management
-
-#### `save_data.py`
-Windows-focused CSV streaming with file locking.
-
-**Features:**
-- Streaming writes (flush every N rows)
-- Hidden file attribute (`0x02`) on temporary `.partial` files
-- Advisory file locking via `msvcrt.locking()` (Windows only)
-- Atomic rename: `.partial` → final filename
-- Column order: Time (s), Temperature (°C), Current (A), Voltage (V), Resistance (Ω)
+#### `device_utils.py`
+**Purpose:** Centralize hardware initialization, laser control, and shutdown.
 
 **Key Functions:**
-- `save_start(sample_name, tuning=False)` - Open file and write header
-- `save_row(elapsed_s, t_meas, i_meas, v_meas, r_meas)` - Append row
-- `save_finalise()` - Close file and rename to final location
+- `init_devices()` — Opens power supply, YCR sensor, Optris sensor; returns a tuple `(psu, ycr_sensor, optris_sensor)`. Raises `SystemExit` on failure.
+- `enable_lasers(ycr_sensor, optris_sensor, on=True, *, log=True)` — Toggles laser enable/disable on both sensors.
+- `shutdown_devices(psu, ycr_sensor, optris_sensor, *, log=True)` — Closes all device connections safely.
+- `close_all(...)` — Alias for `shutdown_devices()`.
 
-#### `file_name.py`
-Generates safe, unique experiment filenames.
+**Why Centralize?** Reduces duplication across experiment scripts and ensures consistent error handling.
 
-**Features:**
-- Creates `~/Documents/Joule_Heating_Data/` directory
-- Sanitizes sample names (replaces illegal chars with `_`)
-- Formats: `YYYYMMDD_<sample_name>[_tuning_data].csv`
-- Auto-increments if file exists: `..._1.csv`, `..._2.csv`, etc.
+#### `experiment_utils.py`
+**Purpose:** Provide shared measurement and data-append helpers.
 
----
+**Key Functions:**
+- `read_data(power_supply, ycr_sensor, optris_sensor, cool=False)` — Reads voltage (V), current (I), and resistance (R) from devices; returns `(t, v, i, r)` tuple where `t` is elapsed seconds and `r` is computed from V/I. If `cool=True`, assumes no active heating and may skip current measurement.
+- `append_data(data, time_start, time_now, t, v, i, r)` — Appends a measurement row to the in-memory `data` dictionary (lists for each field).
 
-### Visualization
+**Why Centralize?** Ensures consistent measurement semantics and reduces code duplication in heating loops.
 
 #### `plot.py`
-Real-time matplotlib visualization with dual y-axes.
-
-**Features**:
-- Live plot with 3 traces on shared timeline:
-  - Temperature (°C) - red axis
-  - Current (A) - blue axis
-  - Resistance (Ω) - green axis
-- Window positioning support
-- Non-blocking display (block=False)
-- Safe position setting (cross-platform)
+**Purpose:** Provide live-plotting helpers.
 
 **Key Functions:**
-- `live_plot_init(sample_name, position)` - Initialize figure
-- `live_plot_updt()` - Update plot with new data
-- `close_plot()` - Clean up
+- `live_plot_init(fig_width=14, fig_height=5)` — Initializes matplotlib figure with three subplots (temperature, voltage, current).
+- `live_plot_updt(fig, axes, lines, data=None, x=None, y1=None, y2=None, y3=None)` — Updates plot lines (legacy signature).
+- `update_live_plot(fig, axes, lines, data=None, x=None, y1=None, y2=None, y3=None)` — Wrapper for consistent live-plot updates; accepts either `data` dictionary or explicit lists.
+
+**Usage Example:**
+```python
+from plot import live_plot_init, update_live_plot
+
+fig, axes, lines = live_plot_init()
+data = {"elapsed_times": [], "temperatures": [], "voltages": [], "currents": []}
+
+# In measurement loop:
+update_live_plot(fig, axes, lines, data=data)
+```
+
+#### `save_data.py`
+**Purpose:** Stream experiment data to CSV with atomic writes and partial-file safety.
+
+**Key Functions:**
+- `save_start(file_path, headers)` — Opens a CSV writer; returns the file handle and writer object.
+- `save_row(writer, time_elapsed, voltage, current, resistance)` — Writes a single data row; flushes immediately for reliability.
+- `save_finalise(file_path)` — Renames `.partial` file to final `.csv` (atomic rename on success).
+
+**Design:** Uses a hidden `.partial` file during writing; on completion, renames to final name. If interrupted, the partial file remains (manual cleanup may be needed).
+
+#### `signal_utils.py`
+**Purpose:** Centralize SIGINT (Ctrl+C) handling and provide a module-level stop event.
+
+**Key Objects:**
+- `stop_event` — A module-level `threading.Event` that is set when Ctrl+C is detected.
+- Context manager for registering/restoring SIGINT handlers.
+
+**Why Centralize?** Ensures deterministic Ctrl+C behavior across all experiment scripts and allows graceful shutdown of measurement loops.
+
+**Usage Example:**
+```python
+from signal_utils import stop_event
+
+while not stop_event.is_set():
+    # measurement loop
+    read_data(...)
+    # Ctrl+C will set stop_event and exit loop gracefully
+```
+
+### Device Drivers
+
+#### `temp_sensor_ycr.py`
+**Purpose:** Driver for YCR temperature sensor (contact-based measurement).
+
+**Key Functions:**
+- `TempSensorYCR` class or factory function to open/close and read temperature.
+
+#### `temp_sensor_optris.py`
+**Purpose:** Driver for Optris temperature sensor (infrared measurement).
+
+**Key Functions:**
+- `TempSensorOptris` class or factory function to open/close and read temperature.
+
+#### `temp_sensor_utils.py`
+**Purpose:** Shared temperature sensor utilities and helpers.
+
+#### `power_supply_etm.py`
+**Purpose:** Driver for ETM power supply.
+
+**Key Functions:**
+- Open, set current/voltage, read voltage/current, close.
+
+#### `port_detect.py`
+**Purpose:** Auto-detect serial port(s) for hardware devices.
+
+### Utility Modules
 
 #### `colour_map.py`
-ANSI escape codes for terminal temperature visualization.
+Plotting color/style definitions and utilities.
 
-**Feature:**
-- Maps temperature range to 6-color gradient (yellow → orange → red)
-- Returns ANSI 256-color codes for console output
-- Handles NaN (displays grey)
-
----
-
-### Data Analysis
-
-#### `gradient_analysis.py`
-Peak/valley detection and thermal transition analysis.
-
-**Features:**
-- Savitzky-Golay smoothing for noise reduction
-- Prominence-based extrema detection
-- Gradient-based slope change analysis
-- Period and amplitude calculation
-- Automated plotting of results
-
-**Use Cases:**
-- Detect thermal transients (sharp temperature rises)
-- Identify oscillation periods during PID tuning
-- Analyze cooling curves
-
----
-
-### Utilities
+#### `file_name.py`
+Helper functions for generating experiment file names and paths.
 
 #### `print_summary.py`
-Formats and displays experiment results.
+Functions to print experiment summary statistics to console.
 
-**Functions:**
-- `print_summary()` - Prints experiment metadata (sample, currents/temps, PID gains, max temperature)
-- `print_steps()` - Tables showing heating phases for constant-current or PID modes
+#### `gradient_analysis.py`
+Post-processing analysis tools (e.g., thermal gradient computation, resistance vs. temperature plots).
 
 #### `system_sleep.py`
-Cross-platform system sleep prevention.
+Utilities for system sleep/wake control (may be used to prevent system sleep during long experiments).
 
-**Features:**
-- Windows: SetThreadExecutionState API
-- macOS: caffeinate subprocess
-- Linux: xset commands
-- Context manager usage: `with prevent_sleep(): ...`
+#### `gui.py`
+GUI utilities (if present; may be optional).
 
-#### `xy_plotter.py` (Optional)
-XRD data plotter for `.xy` files.
+## Recent Refactors
 
-**Features:**
-- Asymmetric least squares (ALS) baseline subtraction
-- Trace normalization
-- Vertically stacked subplots
-- GUI file picker for batch processing
+### 1. Centralized Device Initialization & Shutdown
+- **What:** `device_utils.init_devices()` and `enable_lasers()` replace duplicated hardware-open code in both experiment scripts.
+- **Benefit:** Single source of truth for device initialization; easier to update drivers or add new sensors.
 
----
+### 2. Centralized Signal Handling
+- **What:** `signal_utils.stop_event` and SIGINT handler replace inline signal management.
+- **Benefit:** Deterministic Ctrl+C behavior; graceful shutdown across all scripts.
 
-## Hardware Setup
+### 3. Measurement & Data-Append Extraction
+- **What:** `experiment_utils.read_data()` and `append_data()` centralize sensor reads and in-memory data storage.
+- **Benefit:** Consistent measurement semantics; reduced duplication in heating loops.
 
-### Serial Devices
+### 4. Live-Plot Wrapper
+- **What:** `plot.update_live_plot()` provides a consistent API over `live_plot_updt`.
+- **Benefit:** Cleaner call sites; easier to update plotting logic.
 
-Three devices communicate via serial ports (auto-detected by hardware ID):
+## Architecture & Patterns
 
-| Device | Hardware ID Substring | Baud Rate | Protocol |
-|--------|----------------------|-----------|----------|
-| eTM-5050PC PSU | `AB0P06NMA` | 9600 | Modbus RTU (8N1) |
-| YCR-D30180AR IR | `AQ03H99EA` | 9600 | Modbus RTU (8E1) |
-| Optris IR | `10C4:834B` | 115200 | Binary protocol |
-
-### Temperature Sensor Strategy
-
-The system automatically selects the best sensor based on temperature range:
-
+### Measurement & Control Flow
 ```
-Temperature Range | Sensor | Reason
-0-400°C          | Optris | YCR lower limit is 300°C
-300-1800°C       | YCR    | Optris upper limit is 400°C
+Experiment Loop:
+  ├─ Read hardware (t, v, i, r) [experiment_utils.read_data()]
+  ├─ Append to in-memory data [experiment_utils.append_data()]
+  ├─ Write to CSV [save_data.save_row()]
+  ├─ Update live plot [plot.update_live_plot()]
+  └─ Check for Ctrl+C [signal_utils.stop_event.is_set()]
 ```
 
-If one sensor fails, the other is used as fallback. If both fail, NaN is recorded.
+### Error Handling
+- **Device Initialization:** Raises `SystemExit` on critical failure.
+- **File I/O:** Catches narrow exceptions (`IOError`, `OSError`) to avoid losing in-memory data.
+- **Signal Handling:** Restores original handler on context exit.
 
----
+### Threading & Events
+- `signal_utils.stop_event` is a thread-safe `threading.Event`.
+- Useful for multi-threaded setups (e.g., hardware monitor thread + measurement thread).
 
-## Dependencies
+## Pending Work
 
-### Required Packages
-```
-pandas>=1.0.0           # Data manipulation
-matplotlib>=3.0.0       # Plotting
-numpy>=1.18.0           # Numerical computing
-scipy>=1.5.0            # Signal processing (Savitzky-Golay, sparse operations)
-scikit-learn>=0.24.0    # (Optional, may be unused)
-minimalmodbus>=2.0.0    # Modbus RTU communication
-pyserial>=3.5           # Serial port detection
-simple-pid>=0.2.3       # PID controller
-tkinter                 # (Built-in) GUI framework
-```
+### `record_measurement()` Wrapper (Planned)
+**What:** A single-call helper in `experiment_utils.py` that:
+1. Calls `read_data()`
+2. Calls `append_data()`
+3. Optionally updates live-plot buffers
+4. Calls `save_row()` inside try/except
 
-### Installation
-```bash
-pip install -r requirements.txt
-```
+**Why:** Eliminates repetitive read/append/save call sites; ensures CSV and in-memory data stay in sync; simplifies loop logic.
 
----
+**Status:** Design approved; implementation pending user approval.
 
-## Usage
+### Optional Enhancements
+- **Simulated-device mode:** Mock power supply and sensors for offline testing.
+- **Configuration file:** YAML/JSON for experiment parameters (current, duration, PID gains, etc.).
+- **Data analysis postprocessor:** Automated resistance-temperature curve fitting, thermal-gradient analysis.
+- **Unit tests:** Pytest suite for helper functions and device driver mocks.
 
-### Constant Current Mode
-```bash
-python scripts/joule_heating_constant_current.py
-```
+## FAQ & Troubleshooting
 
-1. Enter sample name, current levels, durations, and max voltage in GUI
-2. System initializes both sensors and PSU
-3. Applies sequential current steps
-4. Records temperature, voltage, current, resistance to CSV
-5. Automatic cooldown phase
-6. Displays summary and plots results
+### Q: My serial port is not detected. What should I do?
 
-### PID Temperature Control Mode
-```bash
-python scripts/joule_heating_pid.py
+**A:** Check hardware connections and try:
+```powershell
+# List available serial ports in PowerShell
+Get-WmiObject Win32_SerialPort | Select-Object Name, DeviceID
+
+# Or use Python:
+python -m serial.tools.list_ports
 ```
 
-1. Enter sample name and experiment parameters in GUI
-2. **Auto-tuning** (if selected):
-   - Applies relay feedback (alternating high/low current)
-   - Detects oscillations to calculate Kp, Ki, Kd
-3. **Main experiment**:
-   - Controls current to maintain temperature setpoints
-   - Supports ramp and hold phases
-4. **Cooldown phase**: Records temperature as sample cools
-5. Summary and plots displayed
+Then update the port in the experiment script or `port_detect.py`.
 
----
+### Q: The plot window won't update. How do I fix it?
 
-## Data Output
-
-### CSV Format
-```
-Time (s), Temperature (°C), Current (A), Voltage (V), Resistance (Ω)
-0.0,      25.3,            0.0,         0.0,         0.0
-0.1,      26.1,            2.5,         10.2,        4.08
-0.2,      27.8,            2.5,         10.3,        4.12
-...
-```
-
-### File Location
-```
-~/Documents/Joule_Heating_Data/YYYYMMDD_<sample_name>.csv
-```
-
-### Tuning Data
-```
-~/Documents/Joule_Heating_Data/YYYYMMDD_<sample_name>_tuning_data.csv
-```
-
----
-
-## Safety Features
-
-1. **Temperature Limits**:
-   - MAX_TEMP = 1200°C: Emergency shutdown if exceeded
-   - MIN_TEMP = 50°C: Cooldown detection threshold
-
-2. **Sensor Redundancy**:
-   - Dual IR sensors provide fallback if one fails
-   - NaN readings recorded but don't crash system
-
-3. **File Locking** (Windows):
-   - Advisory locks prevent concurrent data writes
-   - Hidden `.partial` files during writing
-
-4. **System Sleep Prevention**:
-   - Keeps system awake during long experiments
-   - Cross-platform support
-
----
-
-## Configuration
-
-### Hardware IDs
-If your device hardware IDs differ, update these constants:
-
+**A:** Ensure matplotlib is using a non-blocking backend:
 ```python
-# power_supply_etm.py
-HWID_SUBSTR = "AB0P06NMA"
-
-# temp_sensor_ycr.py
-HWID_SUBSTR = "AQ03H99EA"
-
-# temp_sensor_optris.py
-HWID_SUBSTR = "10C4:834B"
+import matplotlib
+matplotlib.use('TkAgg')  # or 'Qt5Agg'
 ```
 
-### Temperature Limits
+This is usually set in `plot.py` by default.
+
+### Q: Can I run multiple experiments in parallel?
+
+**A:** Not recommended without significant refactoring, since both scripts access shared hardware resources. Design one experiment at a time.
+
+### Q: How do I recover data if the script crashes?
+
+**A:** Check the `.partial` CSV files in the output directory. Rename the most recent `.partial` file to `.csv` to recover partial data.
+
+### Q: My resistance calculation is wrong. How do I debug?
+
+**A:** Add debug prints in `experiment_utils.read_data()` to inspect raw V and I values:
 ```python
-# joule_heating_constant_current.py / joule_heating_pid.py
-MAX_TEMP = 1200  # Safety limit
-MIN_TEMP = 50    # Cooldown threshold (constant-current) or color mapping min (PID)
+print(f"DEBUG: V={v}, I={i}, R={v/i if i > 0 else 0}")
 ```
 
-### PID Tuning Parameters
-```python
-# joule_heating_pid.py, auto_tune_pid()
-switch_interval = 5  # Seconds between current switching
-tuning_durr = 120    # Total tuning duration (seconds)
+### Q: Can I change the PID gains mid-experiment?
+
+**A:** Not easily with the current design. You would need to pause, edit the script, and restart. Future work could add a runtime configuration file or GUI.
+
+## Development & Contributing
+
+### Adding a New Temperature Sensor
+
+1. Create `temp_sensor_new.py` with an open/close/read interface.
+2. Update `device_utils.init_devices()` to instantiate the new sensor.
+3. Update experiment scripts if the sensor has a different API.
+
+### Adding a New Power Supply
+
+1. Create `power_supply_new.py` with methods to set/read voltage/current and close.
+2. Update `experiment_utils.read_data()` if the API differs.
+3. Update `device_utils.init_devices()`.
+
+### Running Tests (Future)
+
+```powershell
+pytest tests/  # When test suite is implemented
 ```
 
----
+## Safety Reminders
 
-## Troubleshooting
+- **Always use a current-limiting power supply** in case of a short circuit.
+- **Test with the power supply off** before running with real samples.
+- **Have a thermal shutdown plan** (e.g., a relay to cut power if temperature exceeds a limit).
+- **Monitor the sample** visually during early runs to detect arcing or melting.
+- **Never leave an experiment unattended** for the first few runs.
 
-### "No serial port matched HWID"
-- Verify devices are connected
-- Check Device Manager for correct COM ports
-- Update HWID_SUBSTR if device IDs differ
+## Support & Questions
 
-### Temperature readings stuck at 50°C
-- Optris sensor has 50°C lower limit (clamping behavior)
-- Below 50°C, reading may not reflect actual temperature
-- Use Optris primarily for 50-300°C range
-
-### PID auto-tuning fails (no oscillations detected)
-- Sample may have high thermal mass (poor oscillation)
-- Increase `tuning_durr` for longer observation
-- Use manual PID gains as fallback
-
-### CSV file locked (Windows)
-- Ensure previous experiment finished (`save_finalise()` called)
-- Check for stale `.partial` files in `~/Documents/Joule_Heating_Data/`
-- Restart if file remains locked
+For issues, feature requests, or questions:
+1. Check the [FAQ & Troubleshooting](#faq--troubleshooting) section above.
+2. Review the docstrings in individual modules (Google-style format).
+3. Check serial port connections and hardware power.
+4. If stuck, include:
+   - Full error traceback
+   - Hardware configuration (sensor types, power supply model)
+   - Last few lines of console output
+   - The generated CSV file (if any)
 
 ---
 
-## Development Notes
-
-### Key Patterns
-
-1. **Dual-Sensor Reading**:
-   ```python
-   def _read_temperature(ycr_sensor, optris_sensor):
-       # Try YCR first (300°C+)
-       # Fall back to Optris for low temps
-       # Return NaN if both fail
-   ```
-
-2. **Error Handling**:
-   - Hardware errors raise `PSUError`, `YCRIRError`, `OptrisIRError`
-   - Caught in experiment loops; logged but don't crash
-   - Finally blocks ensure cleanup
-
-3. **Live Plotting**:
-   - Non-blocking display: `plt.show(block=False)`
-   - Updates per iteration: `live_plot_updt()`
-   - Managed deques (maxlen=500) for memory efficiency
-
-### Testing
-- No formal test suite; experiments validate functionality
-- Console output with ANSI colors shows real-time status
-- CSV data used for post-experiment analysis
-
----
-
-## Author & License
-
-**Author**: Delwin Tanto  
-**Last Updated**: November 2025
-
----
-
-## References
-
-- **Power Supply**: eTM-5050PC (Modbus RTU documentation)
-- **YCR Sensor**: YCR-D30180AR (Modbus RTU interface, 9600 baud)
-- **Optris Sensor**: CT/CTlaser series (Binary protocol, 115200 baud)
-- **PID Tuning**: Ziegler-Nichols method via relay feedback
-- **Signal Processing**: Savitzky-Golay filter (scipy.signal)
-
----
-
-## Future Enhancements
-
-- [ ] Logging to database instead of CSV
-- [ ] Web-based remote monitoring dashboard
-- [ ] Advanced PID algorithms (model predictive control)
-- [ ] Multiprocess data acquisition
-- [ ] Integration with lab management systems
-- [ ] Predictive maintenance alerts
+**Last Updated:** November 2025
+**Repository:** joule-heating-automation
+**Author(s):** Delwin Tanto

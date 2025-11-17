@@ -135,6 +135,47 @@ def live_plot_updt(
     fig.canvas.flush_events()
 
 
+def update_live_plot(fig, axes, lines, data=None, x=None, y1=None, y2=None, y3=None):
+    """Flexible wrapper to update the live plot from either a data dict or lists.
+
+    This helper accepts either a `data` dictionary with keys ``'time'``,
+    ``'temperature'``, ``'current'`` and ``'resistance'`` or explicit lists
+    passed as `x`, `y1`, `y2`, `y3`.
+
+    Args:
+        fig: Matplotlib figure.
+        axes: Tuple of three Axes objects (temp, current, resistance).
+        lines: Tuple of three Line2D objects corresponding to the axes.
+        data (dict, optional): Source data dictionary (preferred for experiments).
+        x, y1, y2, y3 (list, optional): Explicit lists for time, temp, current, resistance.
+
+    Returns:
+        None
+    """
+    if data is not None:
+        x = data["time"]
+        y1 = data["temperature"]
+        y2 = data["current"]
+        y3 = data["resistance"]
+
+    if any(v is None for v in (x, y1, y2, y3)):
+        raise ValueError("Either provide `data` or all of x, y1, y2, y3")
+
+    live_plot_updt(
+        fig,
+        axes[0],
+        axes[1],
+        axes[2],
+        lines[0],
+        lines[1],
+        lines[2],
+        x,
+        y1,
+        y2,
+        y3,
+    )
+
+
 def plot_data(df, columns=None, sample_name=None):
     """Plot time-series data from a Joule heating experiment.
 
