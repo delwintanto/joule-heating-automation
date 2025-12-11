@@ -52,10 +52,9 @@ def live_plot_init(sample_name, position="+30+30"):
     Returns:
         tuple: (fig, ax1, ax2, ax3, line1, line2, line3)
     """
-    fig, ax1 = plt.subplots(figsize=(8, 4))
+    fig, ax1 = plt.subplots(figsize=(8.2, 4))
     plt.get_current_fig_manager().set_window_title("Live Plot")
     fig.suptitle(sample_name, fontsize=13, weight="bold")
-    _plot_set_position(position)
 
     ax1.set_xlabel("Time (s)", fontsize=9)
     ax1.tick_params(axis='x', labelsize=9)
@@ -78,6 +77,8 @@ def live_plot_init(sample_name, position="+30+30"):
 
     plt.tight_layout()
     plt.show(block=False)
+    _plot_set_position(position)
+
     return fig, ax1, ax2, ax3, lines[0], lines[1], lines[2]
 
 
@@ -176,7 +177,7 @@ def update_live_plot(fig, axes, lines, data=None, x=None, y1=None, y2=None, y3=N
     )
 
 
-def plot_data(df, columns=None, sample_name=None):
+def plot_data(df, columns=None, sample_name=None, position="+30+30"):
     """Plot time-series data from a Joule heating experiment.
 
     Args:
@@ -184,6 +185,7 @@ def plot_data(df, columns=None, sample_name=None):
         columns (list[str], optional): Columns to plot. Defaults to Temperature,
             Voltage, Current and Resistance.
         sample_name (str, optional): Title for the plot.
+        position (str, optional): Window position geometry string. Defaults to "+30+30".
 
     Returns:
         None
@@ -199,8 +201,8 @@ def plot_data(df, columns=None, sample_name=None):
         "Resistance (Ω)": "#FFC000",
     }
 
-    fig, axes = plt.subplots(len(columns), 1, figsize=(10, 6), sharex=True)
-    _plot_set_position("+30+30")  # Position the window
+    fig, axes = plt.subplots(len(columns), 1, figsize=(8.2, 6), sharex=True)
+    _plot_set_position(position)  # Position the window
 
     # Plot data against time
     for ax, column in zip(axes, columns):
@@ -218,7 +220,7 @@ def plot_data(df, columns=None, sample_name=None):
     axes[-1].set_xlabel("Time (s)", fontsize=9)
     fig.suptitle(sample_name, fontsize=13, weight="bold")
     plt.tight_layout()
-    plt.show()
+    plt.show(block=True)
 
 
 def close_plot():

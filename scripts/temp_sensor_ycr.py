@@ -110,7 +110,7 @@ def ycr_open(port=None, slave_address=1):
         device.serial.write_timeout = 0.5
         device.serial.parity = "E"
         device.mode = minimalmodbus.MODE_RTU
-        print(f"\033[32mYCR-D30180AR initialised on {port}\033[0m")
+        print(f"YCR sensor initialised on {port}.")
         return device
     except (OSError, minimalmodbus.ModbusException) as e:
         raise YCRIRError(f"Failed to initialise YCR-D30180AR: {e}") from e

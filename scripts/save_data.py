@@ -53,6 +53,12 @@ def save_start(sample_name, tuning=False):
         except OSError:
             pass
 
+    # Remove stale .partial file from previous failed run if it exists
+    try:
+        tmp_path.unlink(missing_ok=True)
+    except (OSError, PermissionError):
+        pass  # open() with 'w' mode will try to overwrite it
+
     fh = open(tmp_path, "w", encoding="utf-8-sig", newline="")
 
     # Hidden attribute (Windows)

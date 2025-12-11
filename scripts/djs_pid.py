@@ -1,27 +1,46 @@
-"""
-This script controls the temperature of a Joule heating sample through PID control.
-It initialises communication with IR temp sensor and PSU, tunes the PID gains, runs
-the experiment, and saves the data to a .csv file. It also displays a live plot of
-temperature, current, and resistance during the experiment.
+"""PID-controlled Joule heating experiment automation with GUI.
+
+This script automates PID-controlled Joule heating experiments by controlling a power
+supply unit (PSU) and IR temperature sensors. The PSU current is adjusted via PID control
+to maintain target temperatures for user-specified durations.
+
+Features:
+    - Interactive GUI for parameter entry and experiment control
+    - Real-time status display and live plotting during experiment
+    - Background threading to keep GUI responsive
+    - Skip functionality for individual heating steps
+    - Auto-tuning via relay feedback (Ziegler-Nichols method)
+    - Automatic data acquisition and CSV export
+    - Final summary plot generation
+
+Main Functions:
+    - auto_tune_pid: Tune PID parameters using relay feedback
+    - run_djs_pid: Execute PID-controlled heating and cooldown
+    - run_experiment_thread: Orchestrate full experiment workflow
 
 Author       : Delwin Tanto
-Last updated : 04 Nov 2025
+Last updated : 10 Dec 2025
 """
 
-import os
-import time
 from collections import deque
 from datetime import datetime
+import threading
+import time
 from tkinter import messagebox
 
 import pandas as pd
 from simple_pid import PID
 
-from colour_map import temp_colour
+from console_utils import position_console_window
+from device_utils import close_all, init_devices
 import gradient_analysis as ga
-from device_utils import close_all, init_devices, enable_lasers
-from gui import gui_pid
-from plot import plot_data, live_plot_init, update_live_plot
+from gui import (
+    gui_pid,
+    create_gui_callbacks_pid,
+    create_experiment_complete_callback_pid,
+    create_plot_callbacks_pid,
+)
+from plot import live_plot_init
 from power_supply_etm import (
     etm_set_onoff,
     etm_set_current,
@@ -37,10 +56,8 @@ from temp_sensor_utils import read_temperature
 
 # Constants
 MAX_TEMP = 1200  # Max temperature limit (°C) for safety
-MIN_TEMP = 30  # Min temp limit (°C) for colour mapping
+MIN_TEMP = 50  # Min temp limit (°C) for colour mapping
 LOOP_INTERVAL = 0.1  # Loop interval to prevent CPU overload (s)
-# YCR sensor minimum operating range (°C); use Optris below this
-YCR_MIN_RANGE = 300
 
 
 # -------------------- Joule heating --------------------
@@ -53,17 +70,13 @@ def auto_tune_pid(
     tuning_durr,
     i_set,
     v_set,
-    fig,
-    ax_temp,
-    ax_curr,
-    ax_res,
-    line_temp,
-    line_curr,
-    line_res,
     lp_time,
     lp_temp,
     lp_curr,
     lp_res,
+    status_callback=None,
+    skip_check_callback=None,
+    update_plot_callback=None,
 ):
     """Tune PID parameters using relay feedback (Ziegler–Nichols method).
 
@@ -80,9 +93,10 @@ def auto_tune_pid(
         tuning_durr (int): Tuning duration in seconds.
         i_set (float): Maximum current limit.
         v_set (float): Voltage setting.
-        fig, ax_temp, ax_curr, ax_res: Matplotlib figure and axes.
-        line_temp, line_curr, line_res: Plot lines for live plot.
         lp_time, lp_temp, lp_curr, lp_res: Data buffers for live plot.
+        status_callback (callable, optional): Function to update GUI status display.
+        skip_check_callback (callable, optional): Function to check if skip requested.
+        update_plot_callback (callable, optional): Function to update live plot.
 
     Returns:
         tuple: ``(kp, ki, kd, lp_time, lp_temp, lp_curr, lp_res, time_start)``
@@ -91,7 +105,11 @@ def auto_tune_pid(
     """
     save_start(sample_name, tuning=True)  # Initialise save file
 
-    print(f"\nStarting Relay Feedback Test for {tuning_durr} s...")
+    print(
+        f"[{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}] "
+        f"Starting Relay Feedback Test for {tuning_durr} s. "
+        "\033[1;31mDO NOT TOUCH!\033[0m!"
+    )
 
     # Step 1: Apply an alternating current and records the temperature oscillations
     switch_interval = 5  # Seconds to switch between high and low current
@@ -101,57 +119,61 @@ def auto_tune_pid(
     etm_set_onoff(power_supply, on=True)
 
     while (elapsed := time.monotonic() - time_start) < tuning_durr:
-        try:
-            # If SIGINT was received, skip auto-tuning early
-            if stop_event.is_set():
-                stop_event.clear()
-                break
+        # Check for skip request
+        if skip_check_callback and skip_check_callback():
+            break
 
-            # Alternate between high and low current
-            i_read = i_set if int(elapsed / switch_interval) % 2 == 0 else 0
-            etm_set_current(power_supply, current=i_read)
-            t_read = read_temperature(ycr_sensor, optris_sensor)
-            v_read = etm_read_voltage(power_supply)
-            r_read = v_read / i_read if i_read != 0 else float("inf")
+        # If SIGINT was received, skip auto-tuning early
+        if stop_event.is_set():
+            stop_event.clear()
+            break
 
-            if t_read > MAX_TEMP:
-                print(
-                    "\033[1;31mTemperature exceeded safe limit! "
-                    "Stopping auto-tuning...\033[0m"
-                )
-                break
+        # Alternate between high and low current
+        i_read = i_set if int(elapsed / switch_interval) % 2 == 0 else 0
+        etm_set_current(power_supply, current=i_read)
+        t_read = read_temperature(ycr_sensor, optris_sensor)
+        v_read = etm_read_voltage(power_supply)
+        r_read = v_read / i_read if i_read != 0 else float("inf")
 
+        if t_read > MAX_TEMP:
             print(
-                f"\r\033[34mI: {i_read:>5.2f} A\033[0m | "
-                f"{temp_colour(t_read, MIN_TEMP, MAX_TEMP)}T: {t_read:>6.1f}°C\033[0m | "
-                f"\033[33mt elapsed: {elapsed:>3.0f} s\033[0m | "
-                "\033[2mCtrl+C to skip\033[0m".ljust(20),
-                end="",
-                flush=True,
+                "\033[1;31mTemperature exceeded safe limit! "
+                "Stopping auto-tuning...\033[0m"
+            )
+            break
+
+        # Update GUI status
+        if status_callback:
+            status_callback(
+                phase="Auto-Tuning",
+                temperature=f"{t_read:.1f}°C",
+                setpoint="-",
+                current=f"{i_read:.2f} A",
+                voltage=f"{v_read:.2f} V",
+                resistance=f"{r_read:.2f} Ω" if r_read != float(
+                    "inf") else "∞ Ω",
+                time_remaining=f"{max(0, int(tuning_durr - elapsed))} s remaining",
             )
 
-            # Log data and updates the live plot
-            lp_time.append(elapsed)
-            lp_temp.append(t_read)
-            lp_curr.append(i_read)
-            lp_res.append(r_read)
-            update_live_plot(
-                fig,
-                (ax_temp, ax_curr, ax_res),
-                (line_temp, line_curr, line_res),
-                x=lp_time,
-                y1=lp_temp,
-                y2=lp_curr,
-                y3=lp_res,
+        # Log data and updates the live plot
+        lp_time.append(elapsed)
+        lp_temp.append(t_read)
+        lp_curr.append(i_read)
+        lp_res.append(r_read)
+
+        if update_plot_callback:
+            update_plot_callback(
+                time_data=list(lp_time),
+                temp_data=list(lp_temp),
+                curr_data=list(lp_curr),
+                res_data=list(lp_res),
             )
-            save_row(elapsed, t_read, i_read, v_read, r_read)
-            time.sleep(LOOP_INTERVAL)  # Sleep to prevent CPU overload
-        except KeyboardInterrupt:
-            stop_event.set()
+
+        save_row(elapsed, t_read, i_read, v_read, r_read)
+        time.sleep(LOOP_INTERVAL)  # Sleep to prevent CPU overload
 
     tuning_csv_path = save_finalise()
-    print(f"\nTuning data: {tuning_csv_path}")
-    print("\nShutting down the power supply while PID gains calculation is running...")
+    print("Calculating PID gains...")
     etm_set_onoff(power_supply, on=False)
 
     # Step 2: Find the oscillation period (Tu) and ultimate gain (Ku)
@@ -164,20 +186,6 @@ def auto_tune_pid(
         lp_temp
     )
 
-    # Plot the peaks and valleys on the live plot
-    ax_temp.plot(
-        [lp_time[p] for p in tuning_data["combined_maxima"]],
-        [lp_temp[p] for p in tuning_data["combined_maxima"]],
-        "ro"
-    )
-    ax_temp.plot(
-        [lp_time[v] for v in tuning_data["combined_minima"]],
-        [lp_temp[v] for v in tuning_data["combined_minima"]],
-        "gx"
-    )
-    fig.canvas.draw()
-    fig.canvas.flush_events()
-
     if amplitude and period:
         ku = (4 * i_set) / (3.141592653589793 * amplitude)
 
@@ -186,7 +194,12 @@ def auto_tune_pid(
         ki = 1.2 * ku / period
         kd = 0.075 * ku * period
 
-        print("\033[1;32mAuto-tuning complete!\033[0m")
+        print(
+            f"[{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}] "
+            "Auto-tuning complete. "
+            f"\033[33mPID Gains -> Kp: {kp:.3f}, Ki: {ki:.3f}, Kd: {kd:.3f}\n\033[0m"
+            f"\nTuning data: {tuning_csv_path}"
+        )
 
     else:
         kp, ki, kd = 0.5, 0.1, 0.1  # Default PID gains if no oscillations detected
@@ -224,6 +237,9 @@ def run_djs_pid(
     v_set,
     cooldown_dur,
     tuning,
+    status_callback=None,
+    skip_check_callback=None,
+    update_plot_callback=None,
 ):
     """Run the Joule heating experiment using a PID controller.
 
@@ -245,6 +261,9 @@ def run_djs_pid(
         v_set (float): Voltage in V.
         cooldown_dur (float): Duration of cooldown phase.
         tuning (str): Tuning method ("Auto tuning" or "Manual tuning").
+        status_callback (callable, optional): Function to update GUI status display.
+        skip_check_callback (callable, optional): Function to check if skip requested.
+        update_plot_callback (callable, optional): Function to update live plot.
 
     Returns:
         tuple: The final PID gains ``(Kp, Ki, Kd)`` used by the experiment.
@@ -255,18 +274,8 @@ def run_djs_pid(
         for key in ["temperature", "time", "current", "resistance"]
     }
 
-    (
-        fig,
-        ax_temp,
-        ax_curr,
-        ax_res,
-        line_temp,
-        line_curr,
-        line_res,
-    ) = live_plot_init(sample_name)
-
-    # Turn on both sensor lasers
-    enable_lasers(ycr_sensor, optris_sensor, on=True)
+    # Initialize time_start (will be set by auto_tune_pid or manual timing)
+    time_start = None
 
     # Run PID gains tuning
     if tuning == "Auto tuning":
@@ -287,17 +296,13 @@ def run_djs_pid(
             tuning_durr,
             i_set,
             v_set,
-            fig,
-            ax_temp,
-            ax_curr,
-            ax_res,
-            line_temp,
-            line_curr,
-            line_res,
             lp_dataset["time"],
             lp_dataset["temperature"],
             lp_dataset["current"],
             lp_dataset["resistance"],
+            status_callback,
+            skip_check_callback,
+            update_plot_callback,
         )
 
         if messagebox.askyesno(
@@ -315,7 +320,9 @@ def run_djs_pid(
             )
 
     print(
-        f"\033[33mPID Gains -> Kp: {kp:.3f}, Ki: {ki:.3f}, Kd: {kd:.3f}\n\033[0m")
+        f"[{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}] "
+        "Starting experiment. \033[1;31mDO NOT TOUCH!\033[0m!"
+    )
 
     # Initialise PID controller with manual or tuned gains
     pid = PID(Kp=kp, Ki=ki, Kd=kd)
@@ -327,8 +334,9 @@ def run_djs_pid(
     etm_set_onoff(power_supply, on=True)
     etm_set_voltage(power_supply, voltage=v_set)
 
-    # Set the starting time for the live plot
-    time_start = time.monotonic() if tuning == "Manual tuning" else time_start
+    # Set the starting time for the live plot (or use time from auto-tuning)
+    if time_start is None:
+        time_start = time.monotonic()
     skip_count = deque(maxlen=3)  # Count how many times user pressed CTRL + C
     total_steps = len(temp_sp)
 
@@ -338,189 +346,421 @@ def run_djs_pid(
         end_time = time_now + duration
 
         while time_now <= end_time:
-            try:
-                # If SIGINT was received, request to skip this heating step.
-                if stop_event.is_set():
-                    stop_event.clear()
-                    break
-
-                t_read = read_temperature(ycr_sensor, optris_sensor)
-
-                # Set current based on PID output
-                curr = 0 if t_read >= MAX_TEMP else pid(t_read)
-                etm_set_current(power_supply, current=curr)
-
-                v_read = etm_read_voltage(power_supply)
-                r_read = v_read / curr if curr != 0 else float("inf")
-
-                elapsed = time_now - time_start
-                save_row(elapsed, t_read, curr, v_read, r_read)
-
-                # Append new data to the live plot dataset
-                for k, v in zip(lp_dataset.keys(), [t_read, elapsed, curr, r_read]):
-                    lp_dataset[k].append(v)
-
-                update_live_plot(
-                    fig,
-                    (ax_temp, ax_curr, ax_res),
-                    (line_temp, line_curr, line_res),
-                    data={
-                        "time": lp_dataset["time"],
-                        "temperature": lp_dataset["temperature"],
-                        "current": lp_dataset["current"],
-                        "resistance": lp_dataset["resistance"],
-                    },
-                )
+            # Check for skip request
+            if skip_check_callback and skip_check_callback():
                 print(
-                    f"\r\033[1mStep {idx}/{total_steps} - "
-                    f"SP: {setpoint:>5}°C/{duration:>5} s\033[0m | "
-                    f"\033[34mI: {curr:>5.2f} A\033[0m | "
-                    f"{temp_colour(t_read, MIN_TEMP, MAX_TEMP)}T: {t_read:>6.1f}°C\033[0m | "
-                    f"t: {max(0, int(end_time - time_now)):>3} s | "
-                    "\033[2mCtrl+C to skip\033[0m".ljust(20),
-                    end="",
-                    flush=True,
+                    f"[{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}]"
+                    f"Step {idx} skipped by user."
                 )
-                time.sleep(LOOP_INTERVAL)  # Sleep to prevent CPU overload
-                time_now = time.monotonic()
+                break
 
-            except KeyboardInterrupt:
-                # Keep consistent: set the stop flag so other loops see it
-                stop_event.set()
-                skip_count.append(time.monotonic())
+            # If SIGINT was received, request to skip this heating step.
+            if stop_event.is_set():
+                stop_event.clear()
+                break
+
+            t_read = read_temperature(ycr_sensor, optris_sensor)
+
+            # Set current based on PID output
+            curr = 0 if t_read >= MAX_TEMP else pid(t_read)
+            etm_set_current(power_supply, current=curr)
+
+            v_read = etm_read_voltage(power_supply)
+            r_read = v_read / curr if curr != 0 else float("inf")
+
+            elapsed = time_now - time_start
+            save_row(elapsed, t_read, curr, v_read, r_read)
+
+            # Append new data to the live plot dataset
+            for k, v in zip(lp_dataset.keys(), [t_read, elapsed, curr, r_read]):
+                lp_dataset[k].append(v)
+
+            # Update GUI status
+            if status_callback:
+                status_callback(
+                    phase=f" Heating - Step {idx}/{total_steps}",
+                    temperature=f"{t_read:.1f}°C",
+                    setpoint=f"{setpoint}°C",
+                    current=f"{curr:.2f} A",
+                    voltage=f"{v_read:.2f} V",
+                    resistance=f"{r_read:.2f} Ω" if r_read != float(
+                        "inf") else "∞ Ω",
+                    time_remaining=f"{max(0, int(end_time - time_now))} s remaining",
+                )
+
+            if update_plot_callback:
+                update_plot_callback(
+                    time_data=list(lp_dataset["time"]),
+                    temp_data=list(lp_dataset["temperature"]),
+                    curr_data=list(lp_dataset["current"]),
+                    res_data=list(lp_dataset["resistance"]),
+                )
+
+            time.sleep(LOOP_INTERVAL)  # Sleep to prevent CPU overload
+            time_now = time.monotonic()
 
         if len(skip_count) == 3 and (skip_count[-1] - skip_count[0] <= 5):
             break  # Exit heating loop entirely if CTRL+C is pressed 3x within 5 s
 
-    print(
-        f"\n\033[1;32m[{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}] "
-        "Heating completed!\033[0m"
-    )
+    print(f"[{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}] Heating completed!")
 
     etm_set_onoff(power_supply, on=False)
 
     if cooldown_dur > 0:
-        print(f"\nStarting cooldown phase for {cooldown_dur} s...")
+        print(
+            f"[{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}] "
+            f"Starting cooldown phase for {cooldown_dur} s..."
+        )
         end_time_cooldown = time.monotonic() + cooldown_dur
         while time.monotonic() <= end_time_cooldown:
-            try:
-                # If SIGINT was received, request to end cooldown early.
-                if stop_event.is_set():
-                    stop_event.clear()
-                    break
+            # Check for skip request
+            if skip_check_callback and skip_check_callback():
+                break
 
-                t_read = read_temperature(ycr_sensor, optris_sensor)
-                i_read, v_read, r_read = 0, 0, float("inf")
+            # If SIGINT was received, request to end cooldown early.
+            if stop_event.is_set():
+                stop_event.clear()
+                break
 
-                timestamp = time.monotonic()
-                elapsed = timestamp - time_start
-                save_row(elapsed, t_read, i_read, v_read, r_read)
+            t_read = read_temperature(ycr_sensor, optris_sensor)
+            i_read, v_read, r_read = 0, 0, float("inf")
 
-                # Update the live plot
-                for k, v in zip(lp_dataset.keys(), [t_read, elapsed, i_read, r_read]):
-                    lp_dataset[k].append(v)
+            timestamp = time.monotonic()
+            elapsed = timestamp - time_start
+            save_row(elapsed, t_read, i_read, v_read, r_read)
 
-                update_live_plot(
-                    fig,
-                    (ax_temp, ax_curr, ax_res),
-                    (line_temp, line_curr, line_res),
-                    data={
-                        "time": lp_dataset["time"],
-                        "temperature": lp_dataset["temperature"],
-                        "current": lp_dataset["current"],
-                        "resistance": lp_dataset["resistance"],
-                    },
+            # Update the live plot
+            for k, v in zip(lp_dataset.keys(), [t_read, elapsed, i_read, r_read]):
+                lp_dataset[k].append(v)
+
+            # Update GUI status
+            if status_callback:
+                status_callback(
+                    phase="Cooldown",
+                    temperature=f"{t_read:.1f}°C",
+                    setpoint="-",
+                    current=f"{i_read:.2f} A",
+                    voltage=f"{v_read:.2f} V",
+                    resistance="∞ Ω",
+                    time_remaining=f"{max(0, int(end_time_cooldown - timestamp))} s remaining",
                 )
-                print(
-                    "\r\033[1;34mCooldown\033[0m - "
-                    f"\r\033[34mI: {i_read:>5.2f} A\033[0m | "
-                    f"{temp_colour(t_read, MIN_TEMP, MAX_TEMP)}T: {t_read:>6.1f}°C\033[0m | "
-                    f"t: {max(0, int(end_time_cooldown - timestamp)):>3} s | "
-                    "\033[2mCtrl+C to end\033[0m".ljust(20),
-                    end="",
-                    flush=True,
-                )
-            except KeyboardInterrupt:
-                stop_event.set()
 
-        print(
-            f"\n\033[1;32m[{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}] "
-            "Cooldown completed!\033[0m"
-        )
+            if update_plot_callback:
+                update_plot_callback(
+                    time_data=list(lp_dataset["time"]),
+                    temp_data=list(lp_dataset["temperature"]),
+                    curr_data=list(lp_dataset["current"]),
+                    res_data=list(lp_dataset["resistance"]),
+                )
+
+            time.sleep(LOOP_INTERVAL)
+
+        print(f"[{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}] Cooldown completed!")
     return kp, ki, kd
 
 
+def run_experiment_thread(
+    power_supply,
+    ycr_sensor,
+    optris_sensor,
+    sample_name,
+    temps,
+    durs,
+    current,
+    voltage,
+    cooldown,
+    kp,
+    ki,
+    kd,
+    tuning_time,
+    tuning_method,
+    started_flag,
+    status_callback,
+    skip_check_callback,
+    on_experiment_complete_callback,
+    fig,
+    axes,
+    lines,
+    update_plot_callback,
+    show_final_plot_callback,
+    close_live_plot_callback,
+):
+    """Run PID experiment in background thread with GUI integration.
+
+    This function orchestrates the entire PID experiment workflow by:
+    1. Running auto-tuning (if selected) or manual PID experiment
+    2. Handling experiment completion and GUI re-enabling
+    3. Displaying final summary plots
+
+    Args:
+        power_supply (minimalmodbus.Instrument): PSU device instance.
+        ycr_sensor (minimalmodbus.Instrument): YCR IR sensor instance.
+        optris_sensor (serial.Serial): Optris IR sensor instance.
+        sample_name (str): Sample identifier.
+        temps (list): Temperature setpoints.
+        durs (list): Durations for each setpoint.
+        current (float): Max current in A.
+        voltage (float): Voltage in V.
+        cooldown (float): Cooldown duration.
+        kp (float): PID proportional gain.
+        ki (float): PID integral gain.
+        kd (float): PID derivative gain.
+        tuning_time (int): Auto-tuning duration.
+        tuning_method (str): "Auto tuning" or "Manual tuning".
+        started_flag (list): Single-element list acting as flag to prevent multiple runs.
+        status_callback (callable): Function to update GUI status display.
+        skip_check_callback (callable): Function to check if skip requested.
+        on_experiment_complete_callback (callable): Function to call when experiment finishes.
+        fig (matplotlib.figure.Figure): Live plot figure object.
+        axes (tuple): Tuple of axes objects for live plot.
+        lines (tuple): Tuple of line objects for live plot.
+        update_plot_callback (callable): Function to update live plot in main thread.
+        show_final_plot_callback (callable): Function to display final summary plot.
+        close_live_plot_callback (callable): Function to close live plot window.
+    """
+    final_csv_path = None
+    saved_data = None
+
+    def update_plot(time_data, temp_data, curr_data, res_data):
+        """Thread-safe callback to update live plot."""
+        update_plot_callback(
+            fig,
+            axes,
+            lines,
+            data={
+                "time": time_data,
+                "temperature": temp_data,
+                "current": curr_data,
+                "resistance": res_data,
+            },
+        )
+
+    try:
+        with prevent_sleep():  # Prevent system sleep during experiment
+            # Run the PID experiment
+            final_kp, final_ki, final_kd = run_djs_pid(
+                sample_name=sample_name,
+                kp=kp,
+                ki=ki,
+                kd=kd,
+                tuning_durr=tuning_time,
+                ycr_sensor=ycr_sensor,
+                optris_sensor=optris_sensor,
+                power_supply=power_supply,
+                temp_sp=temps,
+                durr_sp=durs,
+                i_set=current,
+                v_set=voltage,
+                cooldown_dur=cooldown,
+                tuning=tuning_method,
+                status_callback=status_callback,
+                skip_check_callback=skip_check_callback,
+                update_plot_callback=update_plot,
+            )
+
+            # Save and display final results
+            try:
+                final_csv_path = save_finalise()
+            except OSError as e:
+                print(f"Error saving final data: {e}")
+                final_csv_path = None
+
+            # Close live plot first (before final plot)
+            if close_live_plot_callback:
+                close_live_plot_callback()
+
+            if final_csv_path and final_csv_path != 'None':
+                saved_data = pd.read_csv(final_csv_path)
+
+                # Print some information about the experiment
+                print_summary(
+                    sample_name,
+                    saved_data,
+                    final_csv_path,
+                    pid_curr=current,
+                    pid_volt=voltage,
+                    pid_gains=(final_kp, final_ki, final_kd),
+                )
+                print_steps(temps, durs, cc=False)
+
+                # Show final summary plot (blocks until user closes it)
+                if show_final_plot_callback:
+                    show_final_plot_callback(saved_data, sample_name)
+    finally:
+        # Fail-safe: Always turn off devices (skip plot - already closed by callback)
+        close_all(power_supply, ycr_sensor, optris_sensor, skip_plot=True)
+
+        # Re-enable GUI after experiment completes
+        if on_experiment_complete_callback:
+            on_experiment_complete_callback()
+        started_flag[0] = False
+
+
+# -------------------- Main Program --------------------
 if __name__ == "__main__":
     # Register SIGINT handler so Ctrl+C sets `stop_event` and requests skip/stop.
     with register_sigint_handler():
-        os.system("cls" if os.name == "nt" else "clear")
         print(
             f"[{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}] "
-            "Starting the PID controlled Joule heating program...\n"
+            "Starting the PID-controlled Joule heating program. Please fill in the GUI."
         )
 
-        with prevent_sleep():  # Prevent system sleep during experiment
+        # Initialise communication with IR temperature sensors and power supply
+        psu, ycr_temp_sensor, optris_temp_sensor = init_devices()
+
+        # Create GUI and get experiment parameters
+        (
+            gui_window,
+            output,
+            status_vars,
+            control_vars,
+            tuning_mode,
+            input_mode,
+            field_widgets,
+            common_fields,
+            discrete_fields,
+            continuous_fields,
+            pid_vars,
+        ) = gui_pid(psu, ycr_temp_sensor, optris_temp_sensor)
+
+        if output is None:
+            close_all(psu, ycr_temp_sensor, optris_temp_sensor)
+            raise SystemExit("Program stopped.")
+
+        # Create GUI callback functions
+        update_status, check_skip = create_gui_callbacks_pid(
+            gui_window, status_vars, control_vars
+        )
+
+        # Flag to prevent multiple simultaneous runs
+        experiment_started = [False]
+
+        # Create experiment completion callback
+        on_experiment_complete = create_experiment_complete_callback_pid(
+            gui_window, status_vars, control_vars, experiment_started, field_widgets
+        )
+
+        def start_experiment():
+            """Start experiment in background thread when GUI triggers it."""
+            if not control_vars["experiment_running"].get():
+                return
+
+            # Prevent starting multiple experiments
+            if experiment_started[0]:
+                return
+            experiment_started[0] = True
+
+            # Enable skip button
+            control_vars["skip_button"].config(state="normal")
+
+            # Get experiment parameters
+            sample_name = output["sample"]
+            temps = output["temps"]
+            durs = output["durs"]
+            current = output["current"]
+            voltage = output["voltage"]
+            cooldown = output["cooldown"]
+            kp = output.get("kp", 0.5)
+            ki = output.get("ki", 0.1)
+            kd = output.get("kd", 0.1)
+            tuning_time = output.get("tuning_time", 0)
+
+            # Calculate position for live plot (to the right of GUI)
+            gui_window.update_idletasks()  # Ensure geometry is updated
+            gui_width = gui_window.winfo_width()
+            plot_position = f"+{gui_width + 10}+0"  # 10px gap, aligned to top
+
+            # Initialise live plot
             (
-                sample_id,
-                sp_temp,
-                heating_times,
-                max_current,
-                max_voltage,
-                cooldown_duration,
-                kp_gain,
-                ki_gain,
-                kd_gain,
-                tuning_dur,
-                tuning_method,
-            ) = gui_pid()  # Get user inputs from GUI
+                figure,
+                ax_temp,
+                ax_curr,
+                ax_res,
+                line_temp,
+                line_curr,
+                line_res,
+            ) = live_plot_init(sample_name, position=plot_position)
 
-            if sample_id is None:
-                raise SystemExit("Program stopped.")
-
-            # Initialise temperature sensors and power supply
-            psu, ycr_temp_sensor, optris_temp_sensor = init_devices()
-
+            # Position console window below the live plot
+            # Extract x position from plot_position (format: "+x+0")
             try:
-                # Run the experiment
-                kp_gain, ki_gain, kd_gain = run_djs_pid(
-                    sample_id,
-                    kp_gain,
-                    ki_gain,
-                    kd_gain,
-                    tuning_dur,
+                x_pos = int(plot_position.split("+")[1])
+                position_console_window(x_pos, 520, 800, 300)
+            except (ValueError, IndexError):
+                pass  # Ignore if position string parsing fails
+
+            # Refocus GUI window after plot creation so keyboard shortcuts work
+            gui_window.focus_force()
+
+            # Create plot callbacks with access to live plot context
+            (
+                update_plot,
+                show_final_plot,
+                close_live_plot,
+            ) = create_plot_callbacks_pid(gui_window, plot_position)
+
+            # Start experiment in background thread
+            experiment_thread = threading.Thread(
+                target=run_experiment_thread,
+                args=(
+                    psu,
                     ycr_temp_sensor,
                     optris_temp_sensor,
-                    psu,
-                    sp_temp,
-                    heating_times,
-                    max_current,
-                    max_voltage,
-                    cooldown_duration,
-                    tuning_method,
-                )
-            finally:
-                try:
-                    final_csv_path = save_finalise()  # Finalise and save data
-                except OSError as e:
-                    print(f"Error saving final data: {e}")
+                    sample_name,
+                    temps,
+                    durs,
+                    current,
+                    voltage,
+                    cooldown,
+                    kp,
+                    ki,
+                    kd,
+                    tuning_time,
+                    tuning_mode,
+                    experiment_started,
+                    update_status,
+                    check_skip,
+                    on_experiment_complete,
+                    figure,
+                    (ax_temp, ax_curr, ax_res),
+                    (line_temp, line_curr, line_res),
+                    update_plot,
+                    show_final_plot,
+                    close_live_plot,
+                ),
+                daemon=True,
+            )
+            experiment_thread.start()
 
+        def check_experiment_start():
+            """Check if experiment should start and launch it."""
+            if (
+                control_vars["experiment_running"].get()
+                and output["sample"] is not None
+                and not experiment_started[0]
+            ):
+                start_experiment()
+            gui_window.after(100, check_experiment_start)
+
+        def on_close():
+            """Handle window close event."""
+            if not control_vars["experiment_running"].get():
                 close_all(psu, ycr_temp_sensor, optris_temp_sensor)
+                gui_window.destroy()
+            else:
+                messagebox.showwarning(
+                    "Warning", "Cannot close while experiment is running!"
+                )
 
-                if final_csv_path:
-                    saved_data = pd.read_csv(final_csv_path)
-                    print_summary(
-                        sample_id,
-                        saved_data,
-                        final_csv_path,
-                        pid_curr=max_current,
-                        pid_volt=max_voltage,
-                        pid_gains=(kp_gain, ki_gain, kd_gain),
-                    )
-                    print_steps(sp_temp, heating_times, cc=False)
+        # Start monitoring for experiment trigger
+        gui_window.after(100, check_experiment_start)
 
-                    plot_data(
-                        saved_data,
-                        columns=[
-                            "Temperature (°C)", "Current (A)", "Resistance (Ω)"],
-                        sample_name=sample_id,
-                    )
+        # Set window close handler
+        gui_window.protocol("WM_DELETE_WINDOW", on_close)
+
+        # Bring GUI window to front and give it focus
+        gui_window.lift()
+        gui_window.focus_force()
+
+        # Start GUI main loop
+        gui_window.mainloop()

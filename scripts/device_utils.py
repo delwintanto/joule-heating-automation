@@ -133,7 +133,7 @@ def shutdown_devices(psu=None, ycr_sensor=None, optris_sensor=None, *, log=True)
                 print(f"[Warning] Error turning off Optris laser: {e}")
 
 
-def close_all(psu=None, ycr_sensor=None, optris_sensor=None, *, log=True):
+def close_all(psu=None, ycr_sensor=None, optris_sensor=None, *, log=True, skip_plot=False):
     """Convenience wrapper: shutdown devices and close plot.
 
     Combines :func:`shutdown_devices` and plot closing into a single call.
@@ -145,6 +145,8 @@ def close_all(psu=None, ycr_sensor=None, optris_sensor=None, *, log=True):
         ycr_sensor: YCR IR sensor instance or ``None``.
         optris_sensor: Optris IR sensor instance or ``None``.
         log (bool): If ``True``, print error messages. Default is ``True``.
+        skip_plot (bool): If ``True``, skip closing plot. Use when plot is already
+            closed or when calling from background thread. Default is ``False``.
 
     Returns:
         None
@@ -160,12 +162,13 @@ def close_all(psu=None, ycr_sensor=None, optris_sensor=None, *, log=True):
     # Shutdown hardware
     shutdown_devices(psu, ycr_sensor, optris_sensor, log=log)
 
-    # Close plot
-    try:
-        close_plot()
-    except OSError as e:
-        if log:
-            print(f"[Warning] Error closing plot: {e}")
+    # Close plot (skip if already closed or called from background thread)
+    if not skip_plot:
+        try:
+            close_plot()
+        except OSError as e:
+            if log:
+                print(f"[Warning] Error closing plot: {e}")
 
 
 def enable_lasers(ycr_sensor=None, optris_sensor=None, on=True, *, log=True):

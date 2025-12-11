@@ -74,7 +74,7 @@ def optris_open(port=None, baud=115200):
             timeout=0.5,
             write_timeout=0.5,
         )
-        print(f"\033[32mOPTCTL3MLCF4 is initialised on port {port}.\033[0m")
+        print(f"Optris sensor is initialised on port {port}.")
         return temp_sensor
     except serial.SerialException as e:
         raise OptrisIRError(f"Failed to initialise OPTCTL3MLCF4: {e}") from e

@@ -34,14 +34,26 @@ from typing import Optional
 from contextlib import contextmanager
 
 
+# --- Windows SetThreadExecutionState flags ---
+ES_CONTINUOUS = 0x80000000
+ES_SYSTEM_REQUIRED = 0x00000001
+ES_DISPLAY_REQUIRED = 0x00000002
+
+
 class _SystemSleepManager:
     """Platform-specific implementation to prevent system sleep.
 
-    Provides methods to disable and restore system sleep on Windows (via
-    SetThreadExecutionState), macOS (via caffeinate), and Linux (via xset).
+    This class should not be instantiated directly; use the :func:`prevent_sleep`
+    context manager or :func:`keep_awake` factory instead.
 
-    Args:
-        enable (bool): If ``True`` start preventing sleep immediately on init.
+    On initialisation, it detects the current platform and prepares the
+    appropriate mechanism to keep the system awake. The ``start()`` and
+    ``stop()`` methods control when sleep prevention is active.
+
+    Internally, it handles:
+        - Windows: SetThreadExecutionState
+        - macOS: caffeinate
+        - Linux: xset
 
     Attributes:
         system (str): Detected OS: ``'Windows'``, ``'Darwin'``, or ``'Linux'``.
@@ -75,9 +87,9 @@ class _SystemSleepManager:
             None
         """
         if self.system == "Windows":
-            # ES_CONTINUOUS | ES_SYSTEM_REQUIRED | ES_DISPLAY_REQUIRED
+            # Keep the system AND display awake continuously.
             self._prev_state = ctypes.windll.kernel32.SetThreadExecutionState(
-                0x80000002
+                ES_CONTINUOUS | ES_SYSTEM_REQUIRED | ES_DISPLAY_REQUIRED
             )
         elif self.system == "Darwin":
             self._process = subprocess.Popen(
@@ -117,8 +129,7 @@ class _SystemSleepManager:
             Safe to call multiple times or if ``start()`` was not called.
         """
         if self.system == "Windows" and self._prev_state is not None:
-            ctypes.windll.kernel32.SetThreadExecutionState(
-                0x80000000)  # ES_CONTINUOUS
+            ctypes.windll.kernel32.SetThreadExecutionState(ES_CONTINUOUS)
         elif self.system == "Darwin" and self._process:
             self._process.terminate()
             try:
@@ -173,6 +184,7 @@ def prevent_sleep():
     This is the preferred way to use this module as it ensures proper cleanup.
 
     Example:
+        >>> from system_sleep import prevent_sleep
         >>> with prevent_sleep():
         ...     run_long_experiment()  # System will stay awake here
         # System can sleep again here
@@ -184,11 +196,11 @@ def prevent_sleep():
         - Automatically cleans up when block exits
 
     Yields:
-        None: The context manager doesn't yield any value.
+        _SystemSleepManager: The context manager instance.
     """
-    manager = _SystemSleepManager()
+    manager = _SystemSleepManager(enable=True)
     try:
-        yield
+        yield manager
     finally:
         manager.stop()
 

@@ -1,0 +1,505 @@
+"""Constant-Current (CC) GUI interface and integration functions.
+
+This module provides the GUI for constant-current Joule heating experiments
+and the callback functions for integrating with the experiment thread.
+
+Author       : Delwin Tanto
+Last updated : 10 Dec 2025
+"""
+
+from datetime import datetime
+import os
+import tkinter as tk
+from tkinter import messagebox, ttk
+from tktooltip import ToolTip
+
+from device_utils import enable_lasers
+from plot import close_plot, plot_data, update_live_plot
+from .common import (
+    LabeledEntry,
+    RowCounter,
+    check_empty_fields,
+    load_settings,
+    parse_floats,
+    save_settings,
+    sec_to_hhmmss,
+    show_error,
+)
+
+
+def gui_cc(psu=None, ycr=None, optris=None):
+    """
+    Launch a GUI for Constant-Current Joule Heating experiment.
+
+    Includes a "Test Lasers" section to verify sample alignment before starting.
+
+    Args:
+        psu (minimalmodbus.Instrument, optional): Pre-initialized PSU device instance.
+        ycr (minimalmodbus.Instrument, optional): Pre-initialized YCR sensor instance.
+        optris (serial.Serial, optional): Pre-initialized Optris sensor instance.
+
+    Returns:
+        tuple or None: (gui_window, devices, output, status_vars, control_vars) if experiment
+            started, or None if GUI was cancelled/closed.
+    """
+    gui_window = tk.Tk()
+    gui_window.title("Constant-Current Joule Heating")
+    gui_window.resizable(False, False)
+    gui_window.geometry("+0+0")  # Position at top-left corner
+
+    row = RowCounter()
+    ttk.Label(
+        gui_window,
+        text="Constant-Current Joule Heating Experiment",
+        font=("TkDefaultFont", 12),
+    ).grid(row=row.next(), column=0, columnspan=3, padx=5, pady=10)
+
+    ttk.Label(
+        gui_window,
+        text="Enter all parameters before starting.\n"
+        "Verify equipment limits in your main script or manuals.\n"
+        "Incorrect settings may cause failure.",
+    ).grid(row=row.next(), column=0, columnspan=3, sticky=tk.W, padx=5, pady=(0, 10))
+
+    # Device state for laser testing
+    devices = {"psu": psu, "ycr": ycr, "optris": optris}
+    lasers_on = [False]  # Mutable container to track laser state
+
+    # Laser test controls (alignment)
+    laser_row = row.next()
+    ttk.Label(gui_window, text="Laser Test (for alignment)").grid(
+        row=laser_row, column=0, sticky=tk.W, padx=5, pady=(0, 10)
+    )
+
+    def toggle_lasers():
+        """Toggle lasers on/off for sample alignment."""
+        if not devices["ycr"] and not devices["optris"]:
+            show_error(
+                "Temperature sensors not initialized. Cannot toggle lasers.")
+            return
+        try:
+            lasers_on[0] = not lasers_on[0]
+            enable_lasers(
+                ycr_sensor=devices["ycr"], optris_sensor=devices["optris"], on=lasers_on[0])
+            # Update button appearance based on laser state
+            if lasers_on[0]:
+                btn_toggle.config(style="LaserOn.TButton")
+            else:
+                btn_toggle.config(style="TButton")
+        except (IOError, OSError, RuntimeError) as e:
+            show_error(f"Failed to toggle lasers: {e}")
+
+    # Configure style for laser button
+    style = ttk.Style()
+    style.configure("LaserOn.TButton", background="#FF0000",
+                    foreground="black")
+
+    btn_toggle = ttk.Button(
+        gui_window, text="Toggle Lasers ON/OFF", command=toggle_lasers
+    )
+    btn_toggle.grid(
+        row=laser_row, column=1, columnspan=2, sticky=tk.EW, padx=5, pady=(0, 10)
+    )
+    ToolTip(
+        btn_toggle,
+        msg="Toggle both lasers on/off for sample alignment verification.",
+        delay=0.3,
+    )
+
+    # Input fields
+    fields = {
+        "Sample Name": (
+            tk.StringVar(),
+            "Enter a unique name for your sample.",
+        ),
+        "Currents (A)": (
+            tk.StringVar(),
+            "Current sequence for each heating step.\n"
+            "Use commas for multiple values, e.g., 1.5,2.0,2.5.",
+        ),
+        "Durations (s)": (
+            tk.StringVar(),
+            "Duration for each current step.\n"
+            "Use commas for multiple values, e.g., 10,15,20.",
+        ),
+        "Max Voltage (V)": (
+            tk.StringVar(),
+            "Maximum voltage limit the PSU will supply.",
+        ),
+    }
+
+    entries = {}
+    for label, (var, tooltip) in fields.items():
+        entries[label] = LabeledEntry(
+            gui_window, label + ":", row.next(), var=var, tooltip=tooltip
+        )
+
+    # -------------------- Status Display Section --------------------
+
+    # Create a labeled frame for status display
+    status_frame = ttk.LabelFrame(
+        gui_window, text="Experiment Status", padding=10)
+    status_frame.grid(
+        row=row.next(), column=0, columnspan=3, sticky=tk.EW, padx=10, pady=10
+    )
+
+    # Initialize status variables
+    status_vars = {
+        "phase": tk.StringVar(value="Ready"),
+        "temperature": tk.StringVar(value="--"),
+        "current": tk.StringVar(value="--"),
+        "voltage": tk.StringVar(value="--"),
+        "resistance": tk.StringVar(value="--"),
+        "time_remaining": tk.StringVar(value="--"),
+    }
+
+    # Create status labels
+    status_labels = [
+        ("Phase:", status_vars["phase"]),
+        ("Temperature:", status_vars["temperature"]),
+        ("Current:", status_vars["current"]),
+        ("Voltage:", status_vars["voltage"]),
+        ("Resistance:", status_vars["resistance"]),
+        ("Time:", status_vars["time_remaining"]),
+    ]
+
+    for i, (label_text, var) in enumerate(status_labels):
+        ttk.Label(status_frame, text=label_text, font=("TkDefaultFont", 9, "bold")).grid(
+            row=i, column=0, sticky=tk.W, padx=5, pady=2
+        )
+        ttk.Label(status_frame, textvariable=var, font=("TkDefaultFont", 9)).grid(
+            row=i, column=1, sticky=tk.W, padx=5, pady=2
+        )
+
+    # -------------------- Control Variables --------------------
+
+    control_vars = {
+        "skip_step": tk.BooleanVar(value=False),
+        "experiment_running": tk.BooleanVar(value=False),
+        "skip_button": None,  # Will be set when button is created
+        "entries": entries,  # Store references to all entry widgets
+    }
+
+    # Dictionary to store output values
+    output = {
+        "sample": None,
+        "currents": [],
+        "durations": [],
+        "voltage": None,
+    }
+
+    def start():
+        """Handle the start button click event."""
+        try:
+            # Check for missing entries
+            missing = check_empty_fields(fields)
+            if missing:
+                return show_error(f"Missing fields: {', '.join(missing)}")
+
+            # Get all values from field entries
+            vals = {label: entries[label].get() for label in fields}
+
+            # Store and validate the parameters
+            output["sample"] = vals["Sample Name"]
+            output["currents"] = parse_floats(vals["Currents (A)"])
+            output["durations"] = parse_floats(vals["Durations (s)"])
+            output["voltage"] = float(vals["Max Voltage (V)"])
+
+            # Validation checks
+            if len(output["currents"]) != len(output["durations"]):
+                raise ValueError(
+                    "Mismatch in number of currents and durations.")
+            if not all(x > 0 for x in output["durations"]):
+                raise ValueError("Duration values must be positive.")
+            if output["voltage"] <= 0:
+                raise ValueError("Voltage must be positive.")
+            if not all(x >= 0 for x in output["currents"]):
+                raise ValueError("Current values cannot be negative.")
+
+            # Confirm before starting
+            total_time = sec_to_hhmmss(sum(output["durations"]))
+            if not messagebox.askyesno(
+                "Confirm",
+                f"Approximate length of the experiment: {total_time}\n"
+                "Start experiment?",
+            ):
+                return
+
+            # Set experiment running state
+            control_vars["experiment_running"].set(True)
+
+            # Disable all input fields
+            for entry in entries.values():
+                entry.entry.config(state="disabled")
+
+            # Disable all buttons except skip
+            for widget in gui_window.winfo_children():
+                if isinstance(widget, ttk.Button):
+                    if widget.cget("text") == "Skip Current Step":
+                        widget.config(state="normal")
+                    else:
+                        widget.config(state="disabled")
+
+            # Update status
+            status_vars["phase"].set("Initializing...")
+
+        except ValueError as e:
+            show_error(str(e))
+
+    # -------------------- Button Creation --------------------
+
+    button_row = row.next()
+
+    # Save button
+    btn_save = ttk.Button(
+        gui_window,
+        text="Save Parameters (Ctrl+S)",
+        command=lambda: save_settings(
+            {label: entries[label].get() for label in fields}
+        ),
+    )
+    btn_save.grid(row=button_row, column=0, columnspan=3,
+                  sticky=tk.EW, padx=10, pady=2)
+    ToolTip(btn_save, msg="Save parameters to a file.", delay=0.3)
+
+    # Load button
+    button_row = row.next()
+    btn_load = ttk.Button(
+        gui_window,
+        text="Load Parameters (Ctrl+L)",
+        command=lambda: load_settings(
+            {label: entries[label].var for label in fields}
+        ),
+    )
+    btn_load.grid(row=button_row, column=0, columnspan=3,
+                  sticky=tk.EW, padx=10, pady=2)
+    ToolTip(btn_load, msg="Load parameters from a file.", delay=0.3)
+
+    # Start button
+    button_row = row.next()
+    btn_start = ttk.Button(
+        gui_window, text="Start Experiment (F2)", command=start
+    )
+    btn_start.grid(row=button_row, column=0, columnspan=3,
+                   sticky=tk.EW, padx=10, pady=(10, 2))
+    ToolTip(
+        btn_start, msg="Start the experiment with the entered parameters.", delay=0.3)
+
+    # Skip button
+    button_row = row.next()
+    btn_skip = ttk.Button(
+        gui_window,
+        text="Skip Current Step (F5)",
+        command=lambda: control_vars["skip_step"].set(True),
+        state="disabled",
+    )
+    btn_skip.grid(row=button_row, column=0, columnspan=3,
+                  sticky=tk.EW, padx=10, pady=2)
+    ToolTip(
+        btn_skip,
+        msg="Skip the current heating step and move to the next one.",
+        delay=0.3,
+    )
+    control_vars["skip_button"] = btn_skip  # Store reference
+
+    # -------------------- Keyboard Shortcuts --------------------
+
+    gui_window.bind("<F2>", lambda e: start())
+    gui_window.bind(
+        "<F5>",
+        lambda e: control_vars["skip_step"].set(True),
+    )
+    gui_window.bind(
+        "<Control-s>",
+        lambda e: save_settings(
+            {label: entries[label].get() for label in fields}
+        ),
+    )
+    gui_window.bind(
+        "<Control-l>",
+        lambda e: load_settings(
+            {label: entries[label].var for label in fields}
+        ),
+    )
+
+    # -------------------- Window Close Handler --------------------
+
+    def on_close_attempt():
+        """Handle window close attempt - prevent closing during experiment."""
+        if control_vars["experiment_running"].get():
+            show_error("Cannot close window while experiment is running!")
+        else:
+            gui_window.destroy()
+
+    gui_window.protocol("WM_DELETE_WINDOW", on_close_attempt)
+
+    # Footer
+    tk.Label(
+        gui_window,
+        text=f"{os.path.basename(__file__)} | Author: Delwin Tanto",
+        font=("TkDefaultFont", 7),
+    ).grid(row=999, column=0, columnspan=3, sticky=tk.SW, padx=5)
+
+    return gui_window, output, status_vars, control_vars
+
+
+# -------------------- GUI Integration Callbacks --------------------
+
+
+def create_gui_callbacks_cc(gui_window, status_vars, control_vars):
+    """Create callback functions for GUI integration with CC experiments.
+
+    Args:
+        gui_window (tk.Tk): Main GUI window.
+        status_vars (dict): Dictionary of GUI status variables.
+        control_vars (dict): Dictionary of GUI control variables.
+
+    Returns:
+        tuple: (update_status, check_skip) callback functions.
+    """
+
+    def update_status(phase, temperature, current, voltage, resistance, time_remaining):
+        """Update GUI status display from experiment thread.
+
+        Args:
+            phase (str): Current experiment phase (e.g., "Heating - Step 1/3").
+            temperature (str): Temperature reading with units.
+            current (str): Current reading with units.
+            voltage (str): Voltage reading with units.
+            resistance (str): Resistance reading with units.
+            time_remaining (str): Time remaining/elapsed with units.
+
+        Returns:
+            None
+        """
+        gui_window.after(0, lambda: status_vars["phase"].set(phase))
+        gui_window.after(
+            0, lambda: status_vars["temperature"].set(temperature))
+        gui_window.after(0, lambda: status_vars["current"].set(current))
+        gui_window.after(0, lambda: status_vars["voltage"].set(voltage))
+        gui_window.after(0, lambda: status_vars["resistance"].set(resistance))
+        gui_window.after(
+            0, lambda: status_vars["time_remaining"].set(time_remaining))
+
+    def check_skip():
+        """Check if skip button was pressed in the GUI.
+
+        Returns:
+            bool: True if skip was requested, False otherwise.
+        """
+        if control_vars["skip_step"].get():
+            control_vars["skip_step"].set(False)
+            return True
+        return False
+
+    return update_status, check_skip
+
+
+def create_experiment_complete_callback_cc(
+    gui_window, status_vars, control_vars, experiment_started
+):
+    """Create callback for experiment completion in CC mode.
+
+    Args:
+        gui_window (tk.Tk): Main GUI window.
+        status_vars (dict): Dictionary of GUI status variables.
+        control_vars (dict): Dictionary of GUI control variables.
+        experiment_started (list): Single-element list to track experiment state.
+
+    Returns:
+        callable: Function to call when experiment completes.
+    """
+
+    def on_experiment_complete():
+        """Re-enable GUI controls after experiment completes."""
+
+        def reset_gui():
+            # Reset experiment state
+            experiment_started[0] = False
+            control_vars["experiment_running"].set(False)
+
+            # Re-enable all input fields
+            for entry in control_vars["entries"].values():
+                entry.entry.config(state="normal")
+
+            # Re-enable all buttons except skip
+            for widget in gui_window.winfo_children():
+                if isinstance(widget, ttk.Button):
+                    if widget.cget("text") != "Skip Current Step (F5)":
+                        widget.config(state="normal")
+                    else:
+                        widget.config(state="disabled")
+
+            # Reset status displays
+            status_vars["phase"].set("Ready")
+            status_vars["temperature"].set("--")
+            status_vars["current"].set("--")
+            status_vars["voltage"].set("--")
+            status_vars["resistance"].set("--")
+            status_vars["time_remaining"].set("--")
+
+            print(
+                f"\n[{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}] "
+                "Experiment completed! You can start a new experiment.\n"
+            )
+
+        gui_window.after(0, reset_gui)
+
+    return on_experiment_complete
+
+
+def create_plot_callbacks_cc(gui_window, plot_position="+30+30"):
+    """Create callbacks for plot operations on main thread for CC experiments.
+
+    Args:
+        gui_window (tk.Tk): Main GUI window.
+        plot_position (str, optional): Position for final plot window. Defaults to "+30+30".
+
+    Returns:
+        tuple: (update_plot, show_final_plot, close_live_plot) callback functions.
+    """
+
+    def update_plot(fig, axes, lines, data):
+        """Update live plot from main thread.
+
+        Args:
+            fig (matplotlib.figure.Figure): Figure object.
+            axes (tuple): Tuple of axes objects.
+            lines (tuple): Tuple of line objects.
+            data (dict): Data dictionary with measurements.
+
+        Returns:
+            None
+        """
+        gui_window.after(0, lambda: update_live_plot(
+            fig, axes, lines, data=data))
+
+    def show_final_plot(saved_data, sample_name):
+        """Show final summary plot from main thread.
+
+        Args:
+            saved_data (pd.DataFrame): Experiment data.
+            sample_name (str): Sample name for plot title.
+
+        Returns:
+            None
+        """
+        gui_window.after(
+            0,
+            lambda: plot_data(
+                saved_data,
+                columns=["Temperature (°C)", "Current (A)", "Resistance (Ω)"],
+                sample_name=sample_name,
+                position=plot_position,
+            ),
+        )
+
+    def close_live_plot():
+        """Close live plot window from main thread.
+
+        Returns:
+            None
+        """
+        gui_window.after(0, close_plot)
+
+    return update_plot, show_final_plot, close_live_plot

@@ -69,7 +69,7 @@ def etm_open(port=None, slave_address=1):
         device.serial.write_timeout = 0.5
         device.serial.parity = "N"
         device.mode = minimalmodbus.MODE_RTU
-        print(f"\033[32meTM-5050PC initialised on {port}\033[0m")
+        print(f"Power supply initialised on {port}.")
         return device
     except (OSError, minimalmodbus.ModbusException) as e:
         raise PSUError(f"Failed to initialise eTM-5050PC: {e}") from e
