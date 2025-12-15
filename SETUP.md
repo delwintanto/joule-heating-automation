@@ -45,7 +45,7 @@ This will:
 python -c "import joule_heating; print(joule_heating.__version__)"
 ```
 
-You should see: `1.0.0`
+You should see the version number, e.g. `1.0.0`
 
 ## Running Experiments
 
@@ -107,6 +107,19 @@ If you see `ModuleNotFoundError: No module named 'joule_heating'`:
 2. Ensure you ran `pip install -e .`
 3. Check that you're using the correct Python interpreter
 
+### PowerShell Execution Policy
+
+If you see "running scripts is disabled" when activating:
+
+```powershell
+Set-ExecutionPolicy -ExecutionPolicy RemoteSigned -Scope CurrentUser
+```
+
+Or run scripts directly without activation:
+```powershell
+& ".venv\Scripts\python.exe" experiments\run_cc_experiment.py
+```
+
 ### Pylance/VS Code Issues
 
 If VS Code shows import errors but the code runs:
@@ -115,6 +128,9 @@ If VS Code shows import errors but the code runs:
 2. Choose the interpreter from `.venv/Scripts/python.exe`
 3. Restart VS Code if needed
 
-## Legacy Files (Can Be Removed)
+## Files to Ignore
 
-- `requirements.txt` - Kept for compatibility, but `pyproject.toml` is the source of truth
+- `.venv/` - Virtual environment (don't commit to Git)
+- `*.egg-info/` - Package metadata (auto-generated)
+- `__pycache__/` - Python bytecode (auto-generated)
+- `requirements.txt` - Deprecated; `pyproject.toml` is the source of truth
