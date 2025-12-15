@@ -1,0 +1,38 @@
+[build-system]
+requires = ["setuptools>=61.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "joule-heating-automation"
+version = "1.0.0"
+description = "Python-based experimental control system for sintering materials through resistive heating"
+readme = "README.md"
+requires-python = ">=3.8"
+authors = [
+    {name = "Delwin Tanto"}
+]
+dependencies = [
+    "pandas>=2.0.0",
+    "matplotlib>=3.7.0",
+    "numpy>=1.24.0",
+    "scipy>=1.10.0",
+    "pyserial>=3.5",
+    "minimalmodbus>=2.1.0",
+    "simple-pid>=2.0.0",
+    "tkinter-tooltip>=3.1.0",
+    "pywin32>=306",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=7.0.0",
+    "black>=23.0.0",
+    "flake8>=6.0.0",
+]
+
+[tool.setuptools]
+packages = ["joule_heating"]
+package-dir = {"" = "src"}
+
+[tool.setuptools.package-data]
+joule_heating = ["py.typed"]

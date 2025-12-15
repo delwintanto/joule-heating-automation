@@ -31,27 +31,27 @@ from tkinter import messagebox
 import pandas as pd
 from simple_pid import PID
 
-from console_utils import position_console_window
-from device_utils import close_all, init_devices
-import gradient_analysis as ga
-from gui import (
+import joule_heating.analysis.gradient_analysis as ga
+from joule_heating.data import print_summary, print_steps
+from joule_heating.data import save_start, save_row, save_finalise
+from joule_heating.devices import (
+    close_all,
+    init_devices,
+    etm_set_onoff,
+    etm_set_current,
+    etm_set_voltage,
+    etm_read_voltage,
+    read_temperature,
+)
+from joule_heating.gui import (
     gui_pid,
     create_gui_callbacks_pid,
     create_experiment_complete_callback_pid,
     create_plot_callbacks_pid,
 )
-from plot import live_plot_init
-from power_supply_etm import (
-    etm_set_onoff,
-    etm_set_current,
-    etm_set_voltage,
-    etm_read_voltage,
-)
-from print_summary import print_summary, print_steps
-from save_data import save_start, save_row, save_finalise
-from signal_utils import register_sigint_handler, stop_event
-from system_sleep import prevent_sleep
-from temp_sensor_utils import read_temperature
+from joule_heating.plotting import live_plot_init
+from joule_heating.utils import position_console_window, prevent_sleep
+from joule_heating.utils.skip_step import register_sigint_handler, stop_event
 
 
 # Constants

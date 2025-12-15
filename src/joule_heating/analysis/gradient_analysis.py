@@ -22,7 +22,7 @@ Usage:
 
 2. **As an importable module** (for programmatic use):
     ```python
-    from gradient_analysis import (
+    from joule_heating.analysis import (
         detect_peaks_and_valleys,
         calculate_period,
         calculate_amplitude,

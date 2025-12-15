@@ -20,11 +20,12 @@ Last updated : 06 Nov 2025
 
 import struct
 import minimalmodbus
-from port_detect import find_port_by_hwid
+from .device_registry import DEVICE_HWIDS
+from .port_detect import find_port_by_hwid
 
 
 # Constants
-HWID_SUBSTR = "AQ03H99EA"  # YCR-D30180AR hardware ID substring
+HWID_SUBSTR = DEVICE_HWIDS["YCR_SENSOR"]  # YCR-D30180AR hardware ID substring
 
 
 # -------------------- Custom exception --------------------

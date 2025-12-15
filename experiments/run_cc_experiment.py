@@ -28,26 +28,28 @@ from tkinter import messagebox
 
 import pandas as pd
 
-from console_utils import position_console_window
-from device_utils import close_all, init_devices
-from gui import (
+from joule_heating.data import print_summary, print_steps
+from joule_heating.data import save_start, save_row, save_finalise
+from joule_heating.devices import (
+    close_all,
+    init_devices,
+    etm_set_onoff,
+    etm_set_current,
+    etm_set_voltage,
+    etm_read_current,
+    etm_read_voltage,
+    PSUError,
+    read_temperature,
+)
+from joule_heating.gui import (
     gui_cc,
     create_gui_callbacks_cc,
     create_experiment_complete_callback_cc,
     create_plot_callbacks_cc,
 )
-from plot import live_plot_init
-from power_supply_etm import (
-    etm_set_onoff,
-    etm_set_current, etm_set_voltage,
-    etm_read_current, etm_read_voltage,
-    PSUError,
-)
-from print_summary import print_summary, print_steps
-from save_data import save_start, save_row, save_finalise
-from signal_utils import register_sigint_handler, stop_event
-from system_sleep import prevent_sleep
-from temp_sensor_utils import read_temperature
+from joule_heating.plotting import live_plot_init
+from joule_heating.utils import position_console_window, prevent_sleep
+from joule_heating.utils.skip_step import register_sigint_handler, stop_event
 
 
 # Constants

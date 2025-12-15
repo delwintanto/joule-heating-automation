@@ -20,10 +20,11 @@ Last updated : 06 Nov 2025
 """
 
 import minimalmodbus
-from port_detect import find_port_by_hwid
+from .device_registry import DEVICE_HWIDS
+from .port_detect import find_port_by_hwid
 
 # Constants
-HWID_SUBSTR = "AB0P06NMA"  # eTM-5050PC PSU hardware ID substring
+HWID_SUBSTR = DEVICE_HWIDS["PSU"]  # eTM-5050PC PSU hardware ID substring
 
 
 # -------------------- Custom exception --------------------

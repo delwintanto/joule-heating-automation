@@ -7,7 +7,7 @@ Windows and acquires an advisory lock while writing. On POSIX systems the
 module still streams data but without Windows-specific hidden attribute.
 
 Usage:
-    from save_data import save_start, save_row, save_finalise
+    from joule_heating.data import save_start, save_row, save_finalise
 
 Author       : Delwin Tanto
 Last updated : 06 Oct 2025
@@ -19,7 +19,7 @@ import msvcrt
 import os
 import pathlib
 
-from file_name import generate_filename
+from joule_heating.data import generate_filename
 
 _STATE = {"fh": None, "writer": None, "tmp_path": None,
           "final_path": None, "n": 0, "t0": None}

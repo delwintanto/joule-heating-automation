@@ -13,9 +13,9 @@ Usage:
 =====
 ```python
 from device_utils import shutdown_devices, close_all
-from power_supply_etm import PSUError
-from temp_sensor_ycr import YCRIRError
-from temp_sensor_optris import OptrisIRError
+from .power_supply_etm import PSUError
+from .temp_sensor_ycr import YCRIRError
+from .temp_sensor_optris import OptrisIRError
 
 try:
     # Run experiment...
@@ -32,10 +32,10 @@ Author       : Delwin Tanto
 Last updated : 17 Nov 2025
 """
 
-from power_supply_etm import etm_open, etm_set_onoff, PSUError
-from temp_sensor_ycr import ycr_open, ycr_set_laser, YCRIRError
-from temp_sensor_optris import optris_open, optris_set_laser, OptrisIRError
-from plot import close_plot
+from joule_heating.plotting import close_plot
+from .power_supply_etm import etm_open, etm_set_onoff, PSUError
+from .temp_sensor_ycr import ycr_open, ycr_set_laser, YCRIRError
+from .temp_sensor_optris import optris_open, optris_set_laser, OptrisIRError
 
 
 def init_devices():

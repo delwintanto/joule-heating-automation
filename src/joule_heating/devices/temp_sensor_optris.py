@@ -23,11 +23,12 @@ Last updated : 09 Oct 2025
 
 import math
 import serial
-from port_detect import find_port_by_hwid
+from .device_registry import DEVICE_HWIDS
+from .port_detect import find_port_by_hwid
 
 
 # Constants
-HWID_SUBSTR = "10C4:834B"  # OPTCTL3MLCF4 hardware ID substring
+HWID_SUBSTR = DEVICE_HWIDS["OPTRIS_SENSOR"]  # OPTCTL3MLCF4 hardware ID substring
 EMISSIVITY = 0.3
 TRANSMISSION = 0.8
 CHECKSUM = True  # Whether to use checksum for SET commands

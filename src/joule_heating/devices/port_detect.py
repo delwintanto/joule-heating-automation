@@ -3,6 +3,7 @@ A tiny module to find the serial port of a device by matching a unique hardware 
 """
 
 import serial.tools.list_ports
+from .device_registry import DEVICE_NAMES
 
 
 def find_port_by_hwid(hwid_substr):
@@ -30,8 +31,9 @@ def find_port_by_hwid(hwid_substr):
         if key in (port.hwid or "").lower()
     ]
     if not matches:
+        device_name = DEVICE_NAMES.get(hwid_substr, "device")
         raise RuntimeError(
-            f"No serial port matched HWID substring: {hwid_substr!r}")
+            f"No {device_name} detected. Ensure it is connected properly and powered on")
     if len(matches) > 1:
         raise RuntimeError(
             f"Multiple ports matched HWID substring {hwid_substr!r}: {matches}")

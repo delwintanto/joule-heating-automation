@@ -1,0 +1,27 @@
+# DEPRECATED: This file is kept for reference only.
+# 
+# For installation, use the modern approach:
+#   pip install -e .
+#
+# All dependencies are now managed in pyproject.toml
+#
+# If you need to generate a frozen requirements file:
+#   pip freeze > requirements-frozen.txt
+
+# Core dependencies (see pyproject.toml for versions)
+pandas>=2.0.0
+matplotlib>=3.7.0
+numpy>=1.24.0
+
+# Serial communication
+pyserial>=3.5
+minimalmodbus>=2.1.0
+
+# PID control
+simple-pid>=2.0.0
+
+# GUI
+tktooltip>=1.2.0
+
+# System
+pywin32>=306  # For Windows sleep prevention and console positioning

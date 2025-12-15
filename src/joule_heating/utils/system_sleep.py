@@ -6,7 +6,7 @@ It automatically handles cleanup when the process ends.
 
 Example:
     Basic usage as a context manager:
-    >>> from system_sleep import prevent_sleep
+    >>> from joule_heating.utils import prevent_sleep
     >>> with prevent_sleep():
     ...     # Your long-running code here
 
@@ -184,7 +184,7 @@ def prevent_sleep():
     This is the preferred way to use this module as it ensures proper cleanup.
 
     Example:
-        >>> from system_sleep import prevent_sleep
+        >>> from joule_heating.utils import prevent_sleep
         >>> with prevent_sleep():
         ...     run_long_experiment()  # System will stay awake here
         # System can sleep again here

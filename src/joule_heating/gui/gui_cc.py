@@ -13,8 +13,8 @@ import tkinter as tk
 from tkinter import messagebox, ttk
 from tktooltip import ToolTip
 
-from device_utils import enable_lasers
-from plot import close_plot, plot_data, update_live_plot
+from joule_heating.devices import enable_lasers
+from joule_heating.plotting import close_plot, plot_data, update_live_plot
 from .common import (
     LabeledEntry,
     RowCounter,

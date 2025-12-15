@@ -1,0 +1,44 @@
+# Virtual environments
+.venv/
+venv/
+env/
+ENV/
+
+# Python package metadata
+*.egg-info/
+dist/
+build/
+*.egg
+
+# Python cache
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+
+# IDE settings (uncomment if you want to ignore VS Code settings)
+# .vscode/
+
+# Experiment data and outputs (but NOT src/joule_heating/data/ which is source code)
+*.csv
+*.png
+*.jpg
+/data/
+/outputs/
+experiments/data/
+experiments/outputs/
+
+# OS files
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# Jupyter Notebooks
+.ipynb_checkpoints/
+*.ipynb
+
+# PyCharm
+.idea/
+
+# Logs
+*.log

@@ -15,7 +15,7 @@ Usage:
 =====
 1. **Using the context manager** (recommended):
     ```python
-    from signal_utils import register_sigint_handler, stop_event
+    from joule_heating.utils import register_sigint_handler, stop_event
 
     if __name__ == "__main__":
         with register_sigint_handler():
@@ -24,7 +24,7 @@ Usage:
 
 2. **Manual registration** (for scripts that need more control):
     ```python
-    from signal_utils import register_sigint_handler_manual, stop_event
+    from joule_heating.utils import register_sigint_handler_manual, stop_event
     import signal
 
     if __name__ == "__main__":
@@ -111,7 +111,7 @@ def register_sigint_handler(handler: Optional[Callable] = None):
 
     Example:
         ```python
-        from signal_utils import register_sigint_handler, stop_event
+        from joule_heating.utils import register_sigint_handler, stop_event
 
         if __name__ == "__main__":
             with register_sigint_handler():
