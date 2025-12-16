@@ -5,11 +5,11 @@ Modules:
 """
 
 from .plot import (
+    close_plot,
     live_plot_init,
     live_plot_updt,
-    update_live_plot,
     plot_data,
-    close_plot,
+    update_live_plot,
 )
 
 __all__ = [

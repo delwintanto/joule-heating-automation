@@ -39,11 +39,11 @@ Author       : Delwin Tanto
 Last updated : 17 Nov 2025
 """
 
+import contextlib
 import signal
-from threading import Event
 from contextlib import contextmanager
+from threading import Event
 from typing import Callable, Optional
-
 
 # Module-level event set by SIGINT handler to request skipping current step / ending cooldown
 stop_event = Event()
@@ -130,8 +130,6 @@ def register_sigint_handler(handler: Optional[Callable] = None):
     try:
         yield
     finally:
-        try:
-            signal.signal(signal.SIGINT, old_handler)
-        except (ValueError, OSError):
+        with contextlib.suppress(ValueError, OSError):
             # If restoring the handler fails for any reason during shutdown, ignore
-            pass
+            signal.signal(signal.SIGINT, old_handler)

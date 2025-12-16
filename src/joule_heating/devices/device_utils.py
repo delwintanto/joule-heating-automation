@@ -12,30 +12,28 @@ Key functions:
 Usage:
 =====
 ```python
-from device_utils import shutdown_devices, close_all
-from .power_supply_etm import PSUError
-from .temp_sensor_ycr import YCRIRError
-from .temp_sensor_optris import OptrisIRError
+from joule_heating.devices import init_devices, shutdown_devices, close_all, PSUError
 
 try:
+    psu, ycr_sensor, optris_sensor = init_devices()
     # Run experiment...
-    pass
 finally:
     # Option 1: shutdown devices with error handling built-in
     shutdown_devices(psu, ycr_sensor, optris_sensor)
 
     # Option 2: shutdown + close plot in one call
-    close_all(psu, ycr_sensor, optris_sensor, figure)
+    close_all(psu, ycr_sensor, optris_sensor)
 ```
 
 Author       : Delwin Tanto
-Last updated : 17 Nov 2025
+Last updated : 16 Dec 2025
 """
 
 from joule_heating.plotting import close_plot
-from .power_supply_etm import etm_open, etm_set_onoff, PSUError
-from .temp_sensor_ycr import ycr_open, ycr_set_laser, YCRIRError
-from .temp_sensor_optris import optris_open, optris_set_laser, OptrisIRError
+
+from .power_supply_etm import PSUError, etm_open, etm_set_onoff
+from .temp_sensor_optris import OptrisIRError, optris_open, optris_set_laser
+from .temp_sensor_ycr import YCRIRError, ycr_open, ycr_set_laser
 
 
 def init_devices():

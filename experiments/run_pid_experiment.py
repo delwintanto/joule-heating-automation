@@ -1,8 +1,8 @@
 """PID-controlled Joule heating experiment automation with GUI.
 
-This script automates PID-controlled Joule heating experiments by controlling a power
-supply unit (PSU) and IR temperature sensors. The PSU current is adjusted via PID control
-to maintain target temperatures for user-specified durations.
+This script automates PID-controlled Direct Joule Synthesis (DJS) experiments by
+controlling a power supply unit (PSU) and IR temperature sensors. The PSU current is
+adjusted via PID control to maintain target temperatures for user-specified durations.
 
 Features:
     - Interactive GUI for parameter entry and experiment control
@@ -15,44 +15,42 @@ Features:
 
 Main Functions:
     - auto_tune_pid: Tune PID parameters using relay feedback
-    - run_djs_pid: Execute PID-controlled heating and cooldown
+    - run_djs_pid: Execute PID-controlled heating and cooldown (DJS = Direct Joule Synthesis)
     - run_experiment_thread: Orchestrate full experiment workflow
 
 Author       : Delwin Tanto
-Last updated : 10 Dec 2025
+Last updated : 16 Dec 2025
 """
 
-from collections import deque
-from datetime import datetime
 import threading
 import time
+from collections import deque
+from datetime import datetime
 from tkinter import messagebox
 
 import pandas as pd
 from simple_pid import PID
 
 import joule_heating.analysis.gradient_analysis as ga
-from joule_heating.data import print_summary, print_steps
-from joule_heating.data import save_start, save_row, save_finalise
+from joule_heating.data import print_steps, print_summary, save_finalise, save_row, save_start
 from joule_heating.devices import (
     close_all,
-    init_devices,
-    etm_set_onoff,
-    etm_set_current,
-    etm_set_voltage,
     etm_read_voltage,
+    etm_set_current,
+    etm_set_onoff,
+    etm_set_voltage,
+    init_devices,
     read_temperature,
 )
 from joule_heating.gui import (
-    gui_pid,
-    create_gui_callbacks_pid,
     create_experiment_complete_callback_pid,
+    create_gui_callbacks_pid,
     create_plot_callbacks_pid,
+    gui_pid,
 )
 from joule_heating.plotting import live_plot_init
 from joule_heating.utils import position_console_window, prevent_sleep
 from joule_heating.utils.skip_step import register_sigint_handler, stop_event
-
 
 # Constants
 MAX_TEMP = 1200  # Max temperature limit (°C) for safety
@@ -61,6 +59,7 @@ LOOP_INTERVAL = 0.1  # Loop interval to prevent CPU overload (s)
 
 
 # -------------------- Joule heating --------------------
+
 
 def auto_tune_pid(
     sample_name,
@@ -87,21 +86,26 @@ def auto_tune_pid(
 
     Args:
         sample_name (str): Name of the sample.
-        ycr_sensor (Instrument): YCR IR temperature sensor (for high temperatures).
+        ycr_sensor (minimalmodbus.Instrument): YCR IR temperature sensor (for high temperatures).
         optris_sensor (serial.Serial): Optris IR sensor (for low temperatures).
-        power_supply (Instrument): Power supply unit.
+        power_supply (minimalmodbus.Instrument): Power supply unit.
         tuning_durr (int): Tuning duration in seconds.
-        i_set (float): Maximum current limit.
-        v_set (float): Voltage setting.
-        lp_time, lp_temp, lp_curr, lp_res: Data buffers for live plot.
+        i_set (float): Maximum current limit in amperes.
+        v_set (float): Voltage setting in volts.
+        lp_time, lp_temp, lp_curr, lp_res (list): Data buffers for live plot.
         status_callback (callable, optional): Function to update GUI status display.
         skip_check_callback (callable, optional): Function to check if skip requested.
         update_plot_callback (callable, optional): Function to update live plot.
 
     Returns:
         tuple: ``(kp, ki, kd, lp_time, lp_temp, lp_curr, lp_res, time_start)``
-            where ``kp/ki/kd`` are computed PID gains and the other values are
-            updated buffers and the observed start time of the tuning.
+            where ``kp/ki/kd`` are computed PID gains (or None if tuning fails),
+            and the other values are updated buffers and the observed start time.
+
+    Note:
+        If tuning is interrupted (via skip or SIGINT) or if oscillations cannot
+        be detected, the function returns ``(None, None, None, ...)`` for the PID gains.
+        Temperature safety checks stop tuning if temperature exceeds MAX_TEMP.
     """
     save_start(sample_name, tuning=True)  # Initialise save file
 
@@ -180,10 +184,7 @@ def auto_tune_pid(
     tuning_data = ga.detect_peaks_and_valleys(lp_time, lp_temp)
     period = ga.calculate_period(tuning_data["combined_maxima"], lp_time)
     amplitude = ga.calculate_amplitude(
-        tuning_data["combined_maxima"],
-        tuning_data["combined_minima"],
-        lp_time,
-        lp_temp
+        tuning_data["combined_maxima"], tuning_data["combined_minima"], lp_time, lp_temp
     )
 
     if amplitude and period:
@@ -206,12 +207,9 @@ def auto_tune_pid(
         if messagebox.askyesno(
             "Auto-Tuning Failed",
             "Could not detect oscillations. Do you want to use default PID gains "
-            f"(Kp: {kp}, Ki: {ki}, Kd: {kd})?"
+            f"(Kp: {kp}, Ki: {ki}, Kd: {kd})?",
         ):
-            messagebox.showinfo(
-                "Information",
-                "Running experiment now."
-            )
+            messagebox.showinfo("Information", "Running experiment now.")
         else:
             msg = (
                 f"[{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}] "
@@ -270,8 +268,7 @@ def run_djs_pid(
     """
     # Store cumulative time, temperature, and resistance data for the live plot
     lp_dataset = {
-        key: deque(maxlen=500)
-        for key in ["temperature", "time", "current", "resistance"]
+        key: deque(maxlen=500) for key in ["temperature", "time", "current", "resistance"]
     }
 
     # Initialize time_start (will be set by auto_tune_pid or manual timing)
@@ -309,14 +306,13 @@ def run_djs_pid(
             "Auto-Tuning Completed",
             f"[{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}] "
             "PID gains tuning completed. "
-            "Do you want to continue with the same sample?"
+            "Do you want to continue with the same sample?",
         ):
             messagebox.showinfo("Information", "Running experiment now.")
         else:
             etm_set_onoff(power_supply, on=False)
             messagebox.showinfo(
-                "Information",
-                "Please put in your new sample and press OK to continue."
+                "Information", "Please put in your new sample and press OK to continue."
             )
 
     print(
@@ -569,7 +565,7 @@ def run_experiment_thread(
             if close_live_plot_callback:
                 close_live_plot_callback()
 
-            if final_csv_path and final_csv_path != 'None':
+            if final_csv_path and final_csv_path != "None":
                 saved_data = pd.read_csv(final_csv_path)
 
                 # Print some information about the experiment
@@ -606,7 +602,17 @@ if __name__ == "__main__":
         )
 
         # Initialise communication with IR temperature sensors and power supply
-        psu, ycr_temp_sensor, optris_temp_sensor = init_devices()
+        try:
+            psu, ycr_temp_sensor, optris_temp_sensor = init_devices()
+        except RuntimeError as e:
+            # Device initialization failed - show error dialog
+            messagebox.showerror(
+                "Device Connection Error",
+                f"Failed to initialise devices:\n\n{str(e)}.\n\n" "Press OK to exit.",
+            )
+            raise SystemExit(
+                f"[{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}] Program stopped."
+            ) from e
 
         # Create GUI and get experiment parameters
         (
@@ -629,8 +635,7 @@ if __name__ == "__main__":
 
         # Create GUI callback functions
         update_status, check_skip = create_gui_callbacks_pid(
-            gui_window, status_vars, control_vars
-        )
+            gui_window, status_vars, control_vars)
 
         # Flag to prevent multiple simultaneous runs
         experiment_started = [False]
@@ -749,8 +754,7 @@ if __name__ == "__main__":
                 gui_window.destroy()
             else:
                 messagebox.showwarning(
-                    "Warning", "Cannot close while experiment is running!"
-                )
+                    "Warning", "Cannot close while experiment is running!")
 
         # Start monitoring for experiment trigger
         gui_window.after(100, check_experiment_start)

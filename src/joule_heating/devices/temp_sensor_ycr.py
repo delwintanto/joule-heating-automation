@@ -1,5 +1,4 @@
-"""
-YCR-D30180AR IR thermometer interface using Modbus RTU protocol.
+"""YCR-D30180AR IR thermometer interface using Modbus RTU protocol.
 
 Features:
 - Read temperature (°C)
@@ -18,17 +17,20 @@ Author       : Delwin Tanto
 Last updated : 06 Nov 2025
 """
 
+import contextlib
 import struct
+
 import minimalmodbus
+
 from .device_registry import DEVICE_HWIDS
 from .port_detect import find_port_by_hwid
-
 
 # Constants
 HWID_SUBSTR = DEVICE_HWIDS["YCR_SENSOR"]  # YCR-D30180AR hardware ID substring
 
 
 # -------------------- Custom exception --------------------
+
 
 class YCRIRError(Exception):
     """Base exception for IR sensor related errors."""
@@ -39,6 +41,7 @@ class YCRIRError(Exception):
 
 
 # -------------------- Helper functions --------------------
+
 
 def _regs_to_float_be_lowfirst(regs):
     """Convert two 16-bit Modbus registers to float32.
@@ -55,7 +58,7 @@ def _regs_to_float_be_lowfirst(regs):
         float: Interpreted as 32-bit IEEE float.
     """
     raw = (regs[1] << 16) | regs[0]
-    return struct.unpack('>f', struct.pack('>I', raw))[0]
+    return struct.unpack(">f", struct.pack(">I", raw))[0]
 
 
 def _float_to_regs_be_lowfirst(value):
@@ -72,13 +75,14 @@ def _float_to_regs_be_lowfirst(value):
     Returns:
         list: Two 16-bit integers [low_addr_word, high_addr_word].
     """
-    b = struct.pack('>f', float(value))  # 4 bytes, big-endian
-    hi = (b[0] << 8) | b[1]              # high 16 bits
-    lo = (b[2] << 8) | b[3]              # low 16 bits
-    return [lo, hi]                      # [low_addr_word, high_addr_word]
+    b = struct.pack(">f", float(value))  # 4 bytes, big-endian
+    hi = (b[0] << 8) | b[1]  # high 16 bits
+    lo = (b[2] << 8) | b[3]  # low 16 bits
+    return [lo, hi]  # [low_addr_word, high_addr_word]
 
 
 # -------------------- Initialisation --------------------
+
 
 def ycr_open(port=None, slave_address=1):
     """Open a Modbus RTU connection to the YCR-D30180AR IR thermometer.
@@ -119,6 +123,7 @@ def ycr_open(port=None, slave_address=1):
 
 # -------------------- Temperature --------------------
 
+
 def ycr_read_temp(temp_sensor):
     """Read the target temperature with factory calibration applied.
 
@@ -135,18 +140,12 @@ def ycr_read_temp(temp_sensor):
     try:
         regs = temp_sensor.read_registers(0x0400, 2)
         return _regs_to_float_be_lowfirst(regs) * 1.205
-    except (
-        TimeoutError,
-        IOError,
-        YCRIRError,
-        struct.error,
-        OSError,
-        minimalmodbus.ModbusException,
-    ):
-        return float('nan')
+    except (TimeoutError, YCRIRError, struct.error, OSError, minimalmodbus.ModbusException):
+        return float("nan")
 
 
 # -------------------- Emissivity --------------------
+
 
 def ycr_read_emissivity(temp_sensor):
     """Read the emissivity setting from the sensor.
@@ -165,7 +164,7 @@ def ycr_read_emissivity(temp_sensor):
         regs = temp_sensor.read_registers(0x0402, 2)
         return _regs_to_float_be_lowfirst(regs)
     except (TimeoutError, OSError, minimalmodbus.ModbusException):
-        return float('nan')
+        return float("nan")
 
 
 def ycr_set_emissivity(temp_sensor, *, emissivity):
@@ -193,6 +192,7 @@ def ycr_set_emissivity(temp_sensor, *, emissivity):
 
 # -------------------- Laser pointer --------------------
 
+
 def ycr_set_laser(temp_sensor, *, on):
     """Control the laser pointer ON/OFF.
 
@@ -203,13 +203,12 @@ def ycr_set_laser(temp_sensor, *, on):
         temp_sensor (minimalmodbus.Instrument): The connected YCR sensor.
         on (bool): True to turn laser ON, False to turn laser OFF.
     """
-    try:
+    with contextlib.suppress(TimeoutError, OSError, minimalmodbus.ModbusException):
         temp_sensor.write_register(0x0438, 1 if on else 0)
-    except (TimeoutError, OSError, minimalmodbus.ModbusException):
-        pass
 
 
 # -------------------- Averaging --------------------
+
 
 def ycr_read_avg_time(temp_sensor):
     """Read the averaging time window setting.
@@ -228,7 +227,7 @@ def ycr_read_avg_time(temp_sensor):
         regs = temp_sensor.read_registers(0x0414, 2)
         return _regs_to_float_be_lowfirst(regs)
     except (TimeoutError, OSError, minimalmodbus.ModbusException):
-        return float('nan')
+        return float("nan")
 
 
 def ycr_set_avg_time(temp_sensor, *, avg_time):
@@ -247,8 +246,7 @@ def ycr_set_avg_time(temp_sensor, *, avg_time):
         YCRIRError: If avg_time is outside valid range.
     """
     if not (avg_time == 0 or 0.1 <= avg_time <= 999.9):
-        raise YCRIRError(
-            "Averaging time must be 0 (real-time) or between 0.1 and 999.9 seconds")
+        raise YCRIRError("Averaging time must be 0 (real-time) or between 0.1 and 999.9 seconds")
 
     try:
         regs = _float_to_regs_be_lowfirst(avg_time)
@@ -258,6 +256,7 @@ def ycr_set_avg_time(temp_sensor, *, avg_time):
 
 
 # -------------------- Sensor temperature --------------------
+
 
 def ycr_read_body_temp(temp_sensor):
     """Read the sensor body (electronics) temperature.
@@ -276,7 +275,7 @@ def ycr_read_body_temp(temp_sensor):
         regs = temp_sensor.read_registers(0x0404, 2)
         return _regs_to_float_be_lowfirst(regs)
     except (TimeoutError, OSError, minimalmodbus.ModbusException):
-        return float('nan')
+        return float("nan")
 
 
 if __name__ == "__main__":

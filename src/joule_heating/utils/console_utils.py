@@ -7,7 +7,6 @@ Author       : Delwin Tanto
 Last updated : 11 Dec 2025
 """
 
-
 import ctypes
 
 

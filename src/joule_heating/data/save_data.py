@@ -13,6 +13,7 @@ Author       : Delwin Tanto
 Last updated : 06 Oct 2025
 """
 
+import contextlib
 import csv
 import ctypes
 import msvcrt
@@ -21,8 +22,7 @@ import pathlib
 
 from joule_heating.data import generate_filename
 
-_STATE = {"fh": None, "writer": None, "tmp_path": None,
-          "final_path": None, "n": 0, "t0": None}
+_STATE = {"fh": None, "writer": None, "tmp_path": None, "final_path": None, "n": 0, "t0": None}
 STREAM_FLUSH_EVERY = 1  # set to 10+ if you want fewer disk writes
 
 
@@ -35,60 +35,54 @@ def save_start(sample_name, tuning=False):
 
     Args:
         sample_name (str): Sample identifier used to create the filename.
-        tuning (bool): If True the filename will indicate tuning data.
+        tuning (bool): If True the filename will indicate tuning data. Default is False.
 
     Returns:
         None
 
-    Side effects:
-        - Opens a file handle kept in module state until :func:`save_finalise` is called.
+    Note:
+        Opens a file handle kept in module state until :func:`save_finalise` is called.
+        The file remains open for streaming writes throughout the experiment.
     """
     final_path = pathlib.Path(generate_filename(sample_name, tuning))
     tmp_path = final_path.with_name(final_path.name + ".partial")
     tmp_path.parent.mkdir(parents=True, exist_ok=True)
 
     if _STATE["fh"]:
-        try:
+        with contextlib.suppress(OSError):
             save_finalise()
-        except OSError:
-            pass
 
     # Remove stale .partial file from previous failed run if it exists
-    try:
+    with contextlib.suppress(OSError, PermissionError):
         tmp_path.unlink(missing_ok=True)
-    except (OSError, PermissionError):
-        pass  # open() with 'w' mode will try to overwrite it
 
-    fh = open(tmp_path, "w", encoding="utf-8-sig", newline="")
+    fh = open(tmp_path, "w", encoding="utf-8-sig", newline="")  # noqa: SIM115
 
     # Hidden attribute (Windows)
-    try:
+    with contextlib.suppress(OSError):
         ctypes.windll.kernel32.SetFileAttributesW(str(tmp_path), 0x02)
-    except OSError:
-        pass
 
     # Advisory lock for the whole run (Windows)
     fh.seek(0, os.SEEK_SET)
-    try:
+    with contextlib.suppress(OSError):
         msvcrt.locking(fh.fileno(), msvcrt.LK_NBLCK, 0x7FFFFFFF)
-    except OSError:
-        pass
 
     w = csv.writer(fh)
 
     # Column header row (order matches your DataFrame usage)
-    w.writerow(["Time (s)", "Temperature (°C)", "Current (A)",
-               "Voltage (V)", "Resistance (Ω)"])
+    w.writerow(["Time (s)", "Temperature (°C)", "Current (A)", "Voltage (V)", "Resistance (Ω)"])
     fh.flush()
 
-    _STATE.update({
-        "fh": fh,
-        "writer": w,
-        "tmp_path": tmp_path,
-        "final_path": final_path,
-        "n": 0,
-        "t0": None,
-    })
+    _STATE.update(
+        {
+            "fh": fh,
+            "writer": w,
+            "tmp_path": tmp_path,
+            "final_path": final_path,
+            "n": 0,
+            "t0": None,
+        }
+    )
 
 
 def save_row(elapsed_s, t_meas, i_meas, v_meas, r_meas):
@@ -106,6 +100,10 @@ def save_row(elapsed_s, t_meas, i_meas, v_meas, r_meas):
 
     Returns:
         None
+
+    Note:
+        Must be called after :func:`save_start`. If called before initialization,
+        the function silently returns without writing data.
     """
     s = _STATE
     if not s["writer"]:
@@ -132,26 +130,23 @@ def save_finalise():
     if not s["fh"]:
         return None
     try:
-        try:
+        with contextlib.suppress(OSError):
             msvcrt.locking(s["fh"].fileno(), msvcrt.LK_UNLCK, 0x7FFFFFFF)
-        except OSError:
-            pass
         s["fh"].close()
         os.replace(s["tmp_path"], s["final_path"])
 
         # Remove Hidden attribute (Windows)
-        try:
-            ctypes.windll.kernel32.SetFileAttributesW(
-                str(s["final_path"]), 0x80)
-        except OSError:
-            pass
+        with contextlib.suppress(OSError):
+            ctypes.windll.kernel32.SetFileAttributesW(str(s["final_path"]), 0x80)
         return str(s["final_path"])
     finally:
-        _STATE.update({
-            "fh": None,
-            "writer": None,
-            "tmp_path": None,
-            "final_path": None,
-            "n": 0,
-            "t0": None,
-        })
+        _STATE.update(
+            {
+                "fh": None,
+                "writer": None,
+                "tmp_path": None,
+                "final_path": None,
+                "n": 0,
+                "t0": None,
+            }
+        )

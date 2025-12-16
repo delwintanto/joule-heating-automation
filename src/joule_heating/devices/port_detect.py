@@ -1,8 +1,7 @@
-"""
-A tiny module to find the serial port of a device by matching a unique hardware ID substring.
-"""
+"""A tiny module to find the serial port of a device by matching a unique hardware ID substring."""
 
 import serial.tools.list_ports
+
 from .device_registry import DEVICE_NAMES
 
 
@@ -23,8 +22,7 @@ def find_port_by_hwid(hwid_substr):
     """
     key = (hwid_substr or "").lower()
     if not key:
-        raise RuntimeError(
-            "HWID substring is empty; set HWID_SUBSTR to something specific.")
+        raise RuntimeError("HWID substring is empty; set HWID_SUBSTR to something specific.")
     matches = [
         port.device
         for port in serial.tools.list_ports.comports()
@@ -33,8 +31,8 @@ def find_port_by_hwid(hwid_substr):
     if not matches:
         device_name = DEVICE_NAMES.get(hwid_substr, "device")
         raise RuntimeError(
-            f"No {device_name} detected. Ensure it is connected properly and powered on")
+            f"No {device_name} detected. Ensure it is connected properly and powered on"
+        )
     if len(matches) > 1:
-        raise RuntimeError(
-            f"Multiple ports matched HWID substring {hwid_substr!r}: {matches}")
+        raise RuntimeError(f"Multiple ports matched HWID substring {hwid_substr!r}: {matches}")
     return matches[0]

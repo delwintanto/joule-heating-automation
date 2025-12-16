@@ -1,5 +1,4 @@
-"""
-eTM-5050PC power supply Modbus RTU interface.
+"""eTM-5050PC power supply Modbus RTU interface.
 
 Features:
 - Turn output ON/OFF
@@ -20,6 +19,7 @@ Last updated : 06 Nov 2025
 """
 
 import minimalmodbus
+
 from .device_registry import DEVICE_HWIDS
 from .port_detect import find_port_by_hwid
 
@@ -28,6 +28,7 @@ HWID_SUBSTR = DEVICE_HWIDS["PSU"]  # eTM-5050PC PSU hardware ID substring
 
 
 # -------------------- Custom exception --------------------
+
 
 class PSUError(Exception):
     """Base exception for power supply related errors.
@@ -42,6 +43,7 @@ class PSUError(Exception):
 
 
 # -------------------- Initialisation --------------------
+
 
 def etm_open(port=None, slave_address=1):
     """Open and initialise a serial connection to the eTM-5050PC PSU.
@@ -78,6 +80,7 @@ def etm_open(port=None, slave_address=1):
 
 # -------------------- Write commands --------------------
 
+
 def etm_set_onoff(power_supply, *, on):
     """Turn the PSU output on or off.
 
@@ -91,8 +94,7 @@ def etm_set_onoff(power_supply, *, on):
     try:
         power_supply.write_register(0x0001, 1 if on else 0)
     except (OSError, minimalmodbus.ModbusException) as e:
-        raise PSUError(
-            f"Failed to turn PSU {'ON' if on else 'OFF'}: {e}") from e
+        raise PSUError(f"Failed to turn PSU {'ON' if on else 'OFF'}: {e}") from e
 
 
 def etm_set_voltage(power_supply, *, voltage):
@@ -130,11 +132,11 @@ def etm_set_current(power_supply, *, current):
     try:
         power_supply.write_register(0x0031, current * 10.0, 1)
     except (ValueError, OSError, minimalmodbus.ModbusException) as e:
-        raise PSUError(
-            (f"Failed to set PSU current to {current} A: {e}")) from e
+        raise PSUError(f"Failed to set PSU current to {current} A: {e}") from e
 
 
 # -------------------- Read commands --------------------
+
 
 def etm_read_voltage(power_supply):
     """Read the PSU output voltage.
@@ -148,7 +150,7 @@ def etm_read_voltage(power_supply):
     try:
         return power_supply.read_register(0x0010, 2)
     except (OSError, minimalmodbus.ModbusException):
-        return float('nan')
+        return float("nan")
 
 
 def etm_read_current(power_supply):
@@ -163,7 +165,7 @@ def etm_read_current(power_supply):
     try:
         return power_supply.read_register(0x0011, 2)
     except (OSError, minimalmodbus.ModbusException):
-        return float('nan')
+        return float("nan")
 
 
 if __name__ == "__main__":

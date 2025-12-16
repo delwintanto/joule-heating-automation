@@ -1,8 +1,9 @@
 """Constant-current Joule heating experiment automation with GUI.
 
-This script automates Joule heating experiments by controlling a power supply unit (PSU)
-and IR temperature sensors. The PSU supplies a constant current to the Joule heating
-setup for user-specified durations, depending on the material type and desired sintering.
+This script automates Direct Joule Synthesis (DJS) experiments by controlling a power
+supply unit (PSU) and IR temperature sensors. The PSU supplies a constant current to
+the Joule heating setup for user-specified durations, depending on the material type
+and desired sintering.
 
 Features:
     - Interactive GUI for parameter entry and experiment control
@@ -13,44 +14,42 @@ Features:
     - Final summary plot generation
 
 Main Functions:
-    - run_djs_cc: Execute constant-current heating phase
+    - run_djs_cc: Execute constant-current heating phase (DJS = Direct Joule Synthesis)
     - cooldown: Monitor and record cooldown phase
     - run_experiment_thread: Orchestrate full experiment workflow
 
 Author       : Delwin Tanto
-Last updated : 10 Dec 2025
+Last updated : 16 Dec 2025
 """
 
-from datetime import datetime
 import threading
 import time
+from datetime import datetime
 from tkinter import messagebox
 
 import pandas as pd
 
-from joule_heating.data import print_summary, print_steps
-from joule_heating.data import save_start, save_row, save_finalise
+from joule_heating.data import print_steps, print_summary, save_finalise, save_row, save_start
 from joule_heating.devices import (
+    PSUError,
     close_all,
-    init_devices,
-    etm_set_onoff,
-    etm_set_current,
-    etm_set_voltage,
     etm_read_current,
     etm_read_voltage,
-    PSUError,
+    etm_set_current,
+    etm_set_onoff,
+    etm_set_voltage,
+    init_devices,
     read_temperature,
 )
 from joule_heating.gui import (
-    gui_cc,
-    create_gui_callbacks_cc,
     create_experiment_complete_callback_cc,
+    create_gui_callbacks_cc,
     create_plot_callbacks_cc,
+    gui_cc,
 )
 from joule_heating.plotting import live_plot_init
 from joule_heating.utils import position_console_window, prevent_sleep
 from joule_heating.utils.skip_step import register_sigint_handler, stop_event
-
 
 # Constants
 MAX_TEMP = 1200  # Max temp limit (°C) for safety
@@ -60,6 +59,7 @@ COOLDOWN_BUFFER = 10  # Extra seconds to wait after T drops below MIN_TEMP
 
 
 # -------------------- Helper functions --------------------
+
 
 def _read_data(power_supply, ycr_sensor, optris_sensor):
     """Read temperature, voltage and current, and compute resistance.
@@ -73,7 +73,7 @@ def _read_data(power_supply, ycr_sensor, optris_sensor):
 
     Returns:
         tuple: ``(temperature, voltage, current, resistance)`` where resistance
-            is ``voltage / current`` or ``float('inf')`` when current is zero.
+            is ``voltage / current`` or ``float("inf")`` when current is zero.
     """
     t_read = read_temperature(ycr_sensor, optris_sensor)
     v_read = etm_read_voltage(power_supply) if power_supply else 0.0
@@ -87,12 +87,12 @@ def _append_data(data, time_start, time_now, t_read, v_read, i_read, r_read):
 
     The function appends values to lists keyed by 'time', 'temperature',
     'voltage', 'current' and 'resistance'. Time is normalised so
-    that the first recorded timestamp equals zero.
+    that the first recorded timestamp equals zero. This data dictionary
+    serves as the source for CSV file writing and plotting.
 
     Args:
-        data (dict): Data dictionary to append to. Expected keys are
-            'time', 'temperature', 'voltage', 'current',
-            and ``'resistance'`` with list values.
+        data (dict): Data dictionary with keys 'time', 'temperature', 'voltage',
+            'current', and 'resistance', each containing a list of measurements.
         time_start (float): Start time of the experiment (monotonic time).
         time_now (float): Current time (monotonic time).
         t_read (float): Temperature reading in °C.
@@ -185,7 +185,8 @@ def run_djs_cc(
 
                 # Check if skip was requested via GUI callback or SIGINT
                 skip_requested = (
-                    skip_check_callback and skip_check_callback()) or stop_event.is_set()
+                    skip_check_callback and skip_check_callback()
+                ) or stop_event.is_set()
                 if skip_requested:
                     stop_event.clear()
                     print(
@@ -204,10 +205,7 @@ def run_djs_cc(
                 save_row(time_now - time_start, t_read, i_read, v_read, r_read)
 
                 # PSU OFF if temperature exceeds limit
-                etm_set_onoff(
-                    power_supply,
-                    on=t_read < MAX_TEMP
-                )
+                etm_set_onoff(power_supply, on=t_read < MAX_TEMP)
 
                 # Update live plot from main thread if callback provided
                 if update_plot_callback:
@@ -223,7 +221,7 @@ def run_djs_cc(
                         current=f"{i_read:.1f} A",
                         voltage=f"{v_read:.2f} V",
                         resistance=f"{r_read:.2f} Ω",
-                        time_remaining=f"{time_remain} s remaining"
+                        time_remaining=f"{time_remain} s remaining",
                     )
 
                 time.sleep(LOOP_INTERVAL)  # Sleep to prevent CPU overload
@@ -312,7 +310,7 @@ def cooldown(
                     voltage="0 V",
                     resistance=f"{r_read:.2f} Ω" if r_read != float(
                         "inf") else "∞ Ω",
-                    time_remaining=f"{elapsed} s elapsed"
+                    time_remaining=f"{elapsed} s elapsed",
                 )
 
             temp_low = pd.isna(t_read) or t_read <= MIN_TEMP
@@ -395,25 +393,23 @@ def run_experiment_thread(
 
             try:
                 # Joule heating phase
-                start_time, h_data = (
-                    run_djs_cc(
-                        power_supply,
-                        ycr_sensor,
-                        optris_sensor,
-                        currents,
-                        durations,
-                        max_volt,
-                        figure,
-                        ax_temp,
-                        ax_current,
-                        ax_resistance,
-                        line_temp,
-                        line_current,
-                        line_resistance,
-                        status_callback=status_callback,
-                        skip_check_callback=skip_check_callback,
-                        update_plot_callback=update_plot_callback,
-                    )
+                start_time, h_data = run_djs_cc(
+                    power_supply,
+                    ycr_sensor,
+                    optris_sensor,
+                    currents,
+                    durations,
+                    max_volt,
+                    figure,
+                    ax_temp,
+                    ax_current,
+                    ax_resistance,
+                    line_temp,
+                    line_current,
+                    line_resistance,
+                    status_callback=status_callback,
+                    skip_check_callback=skip_check_callback,
+                    update_plot_callback=update_plot_callback,
                 )
 
                 # Shut down the power supply
@@ -447,7 +443,7 @@ def run_experiment_thread(
                 if close_live_plot_callback:
                     close_live_plot_callback()
 
-                if final_csv_path and final_csv_path != 'None':
+                if final_csv_path and final_csv_path != "None":
                     saved_data = pd.read_csv(final_csv_path)
 
                     # Print some information about the experiment
@@ -476,7 +472,17 @@ if __name__ == "__main__":
         )
 
         # Initialise communication with IR temperature sensors and power supply
-        psu, ycr_temp_sensor, optris_temp_sensor = init_devices()
+        try:
+            psu, ycr_temp_sensor, optris_temp_sensor = init_devices()
+        except RuntimeError as e:
+            # Device initialization failed - show error dialog
+            messagebox.showerror(
+                "Device Connection Error",
+                f"Failed to initialise devices:\n\n{str(e)}.\n\n" "Press OK to exit.",
+            )
+            raise SystemExit(
+                f"[{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}] Program stopped."
+            ) from e
 
         # Create GUI and get experiment parameters
         (
@@ -492,8 +498,7 @@ if __name__ == "__main__":
 
         # Create GUI callback functions
         update_status, check_skip = create_gui_callbacks_cc(
-            gui_window, status_vars, control_vars
-        )
+            gui_window, status_vars, control_vars)
 
         # Flag to prevent multiple simultaneous runs
         experiment_started = [False]
@@ -587,10 +592,7 @@ if __name__ == "__main__":
 
         def check_experiment_start():
             """Monitor for experiment start trigger from GUI."""
-            if (
-                control_vars["experiment_running"].get()
-                and output["sample"] is not None
-            ):
+            if control_vars["experiment_running"].get() and output["sample"] is not None:
                 start_experiment()
             gui_window.after(100, check_experiment_start)
 
@@ -601,8 +603,7 @@ if __name__ == "__main__":
                 gui_window.destroy()
             else:
                 messagebox.showwarning(
-                    "Warning", "Cannot close while experiment is running!"
-                )
+                    "Warning", "Cannot close while experiment is running!")
 
         # Start monitoring for experiment trigger
         gui_window.after(100, check_experiment_start)

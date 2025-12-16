@@ -5,9 +5,9 @@ Modules:
 """
 
 from .gradient_analysis import (
-    detect_peaks_and_valleys,
-    calculate_period,
     calculate_amplitude,
+    calculate_period,
+    detect_peaks_and_valleys,
 )
 
 __all__ = [

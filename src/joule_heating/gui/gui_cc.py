@@ -7,14 +7,16 @@ Author       : Delwin Tanto
 Last updated : 10 Dec 2025
 """
 
-from datetime import datetime
 import os
 import tkinter as tk
+from datetime import datetime
 from tkinter import messagebox, ttk
+
 from tktooltip import ToolTip
 
 from joule_heating.devices import enable_lasers
 from joule_heating.plotting import close_plot, plot_data, update_live_plot
+
 from .common import (
     LabeledEntry,
     RowCounter,
@@ -80,13 +82,14 @@ def gui_cc(psu=None, ycr=None, optris=None):
         try:
             lasers_on[0] = not lasers_on[0]
             enable_lasers(
-                ycr_sensor=devices["ycr"], optris_sensor=devices["optris"], on=lasers_on[0])
+                ycr_sensor=devices["ycr"], optris_sensor=devices["optris"], on=lasers_on[0]
+            )
             # Update button appearance based on laser state
             if lasers_on[0]:
                 btn_toggle.config(style="LaserOn.TButton")
             else:
                 btn_toggle.config(style="TButton")
-        except (IOError, OSError, RuntimeError) as e:
+        except (OSError, RuntimeError) as e:
             show_error(f"Failed to toggle lasers: {e}")
 
     # Configure style for laser button
@@ -95,11 +98,9 @@ def gui_cc(psu=None, ycr=None, optris=None):
                     foreground="black")
 
     btn_toggle = ttk.Button(
-        gui_window, text="Toggle Lasers ON/OFF", command=toggle_lasers
-    )
-    btn_toggle.grid(
-        row=laser_row, column=1, columnspan=2, sticky=tk.EW, padx=5, pady=(0, 10)
-    )
+        gui_window, text="Toggle Lasers ON/OFF", command=toggle_lasers)
+    btn_toggle.grid(row=laser_row, column=1, columnspan=2,
+                    sticky=tk.EW, padx=5, pady=(0, 10))
     ToolTip(
         btn_toggle,
         msg="Toggle both lasers on/off for sample alignment verification.",
@@ -131,17 +132,15 @@ def gui_cc(psu=None, ycr=None, optris=None):
     entries = {}
     for label, (var, tooltip) in fields.items():
         entries[label] = LabeledEntry(
-            gui_window, label + ":", row.next(), var=var, tooltip=tooltip
-        )
+            gui_window, label + ":", row.next(), var=var, tooltip=tooltip)
 
     # -------------------- Status Display Section --------------------
 
     # Create a labeled frame for status display
     status_frame = ttk.LabelFrame(
         gui_window, text="Experiment Status", padding=10)
-    status_frame.grid(
-        row=row.next(), column=0, columnspan=3, sticky=tk.EW, padx=10, pady=10
-    )
+    status_frame.grid(row=row.next(), column=0, columnspan=3,
+                      sticky=tk.EW, padx=10, pady=10)
 
     # Initialize status variables
     status_vars = {
@@ -220,8 +219,7 @@ def gui_cc(psu=None, ycr=None, optris=None):
             total_time = sec_to_hhmmss(sum(output["durations"]))
             if not messagebox.askyesno(
                 "Confirm",
-                f"Approximate length of the experiment: {total_time}\n"
-                "Start experiment?",
+                f"Approximate length of the experiment: {total_time}\n" "Start experiment?",
             ):
                 return
 
@@ -255,8 +253,7 @@ def gui_cc(psu=None, ycr=None, optris=None):
         gui_window,
         text="Save Parameters (Ctrl+S)",
         command=lambda: save_settings(
-            {label: entries[label].get() for label in fields}
-        ),
+            {label: entries[label].get() for label in fields}),
     )
     btn_save.grid(row=button_row, column=0, columnspan=3,
                   sticky=tk.EW, padx=10, pady=2)
@@ -268,8 +265,7 @@ def gui_cc(psu=None, ycr=None, optris=None):
         gui_window,
         text="Load Parameters (Ctrl+L)",
         command=lambda: load_settings(
-            {label: entries[label].var for label in fields}
-        ),
+            {label: entries[label].var for label in fields}),
     )
     btn_load.grid(row=button_row, column=0, columnspan=3,
                   sticky=tk.EW, padx=10, pady=2)
@@ -278,8 +274,7 @@ def gui_cc(psu=None, ycr=None, optris=None):
     # Start button
     button_row = row.next()
     btn_start = ttk.Button(
-        gui_window, text="Start Experiment (F2)", command=start
-    )
+        gui_window, text="Start Experiment (F2)", command=start)
     btn_start.grid(row=button_row, column=0, columnspan=3,
                    sticky=tk.EW, padx=10, pady=(10, 2))
     ToolTip(
@@ -312,14 +307,12 @@ def gui_cc(psu=None, ycr=None, optris=None):
     gui_window.bind(
         "<Control-s>",
         lambda e: save_settings(
-            {label: entries[label].get() for label in fields}
-        ),
+            {label: entries[label].get() for label in fields}),
     )
     gui_window.bind(
         "<Control-l>",
         lambda e: load_settings(
-            {label: entries[label].var for label in fields}
-        ),
+            {label: entries[label].var for label in fields}),
     )
 
     # -------------------- Window Close Handler --------------------

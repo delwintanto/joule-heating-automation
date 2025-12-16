@@ -1,5 +1,4 @@
-"""
-Utility functions for generating safe, unique filenames for Joule Heating experiment data.
+"""Utility functions for generating safe, unique filenames for Joule Heating experiment data.
 
 This module provides the `generate_filename()` function, which:
 - Creates a data directory inside the user's Documents folder (~/Documents/Joule_Heating_Data).
@@ -12,7 +11,6 @@ This module provides the `generate_filename()` function, which:
 Author       : Delwin Tanto
 Last updated : 10 Oct 2025
 """
-
 
 import datetime
 import os
@@ -37,14 +35,13 @@ def generate_filename(
     Returns:
         str: Full path to the generated (or pre-existing) CSV filename.
     """
-    file_path = os.path.join(os.path.expanduser(
-        "~"), "Documents", "Joule_Heating_Data")
+    file_path = os.path.join(os.path.expanduser("~"), "Documents", "Joule_Heating_Data")
     os.makedirs(file_path, exist_ok=True)
 
     # Sanitise sample_name (remove invalid Windows chars and spaces)
     safe_name = re.sub(r'[<>:"/\\|?* ]', "_", sample_name)
 
-    date_str = datetime.datetime.now().strftime('%Y%m%d')
+    date_str = datetime.datetime.now().strftime("%Y%m%d")
     suffix = "_tuning_data" if tuning else ""
     file_name = os.path.join(file_path, f"{date_str}_{safe_name}{suffix}.csv")
 

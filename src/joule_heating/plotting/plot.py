@@ -1,12 +1,13 @@
-"""
-Module for plotting Joule heating experiment data using matplotlib.
+"""Module for plotting Joule heating experiment data using matplotlib.
 Result is a 2x2 grid of subplots for Temperature, Voltage, Current, and Resistance.
 
 Author       : Delwin Tanto
 Last updated : 04 Nov 2025
 """
 
+import contextlib
 import math
+
 import matplotlib.pyplot as plt
 
 
@@ -20,10 +21,8 @@ def _plot_set_position(position):
         On backends that do not support GUI window manipulation this function
         will fail silently.
     """
-    try:
+    with contextlib.suppress(AttributeError, RuntimeError):
         plt.get_current_fig_manager().window.wm_geometry(position)
-    except (AttributeError, RuntimeError):
-        pass
 
 
 def _is_finite_number(x):
@@ -42,22 +41,29 @@ def _is_finite_number(x):
 
 
 def live_plot_init(sample_name, position="+30+30"):
-    """
-    Initialise the figure and axes for live plotting.
+    """Initialise the figure and axes for live plotting.
+
+    Creates a matplotlib figure with three overlaid y-axes for temperature,
+    current, and resistance data. The plot is configured for live updates
+    during experiment execution.
 
     Args:
-        sample_name: Title for the figure.
-        position: Optional window position geometry.
+        sample_name (str): Title for the figure (typically sample identifier).
+        position (str, optional): Window position geometry string (e.g., "+30+30").
+            Default is "+30+30".
 
     Returns:
-        tuple: (fig, ax1, ax2, ax3, line1, line2, line3)
+        tuple: (fig, ax1, ax2, ax3, line1, line2, line3) where:
+            - fig: Matplotlib Figure object
+            - ax1, ax2, ax3: Axes for temperature, current, and resistance
+            - line1, line2, line3: Line2D objects for updating data
     """
     fig, ax1 = plt.subplots(figsize=(8.2, 4))
     plt.get_current_fig_manager().set_window_title("Live Plot")
     fig.suptitle(sample_name, fontsize=13, weight="bold")
 
     ax1.set_xlabel("Time (s)", fontsize=9)
-    ax1.tick_params(axis='x', labelsize=9)
+    ax1.tick_params(axis="x", labelsize=9)
 
     ax2, ax3 = ax1.twinx(), ax1.twinx()
     ax3.spines["right"].set_position(("outward", 60))
@@ -214,7 +220,7 @@ def plot_data(df, columns=None, sample_name=None, position="+30+30"):
         ax.set_xlim(left=0)
 
     for ax in axes[:-1]:
-        ax.tick_params(axis='x', which='both', bottom=False, labelbottom=False)
+        ax.tick_params(axis="x", which="both", bottom=False, labelbottom=False)
         ax.spines["bottom"].set_visible(False)
 
     axes[-1].set_xlabel("Time (s)", fontsize=9)

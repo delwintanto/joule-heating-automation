@@ -12,8 +12,8 @@ import os
 import re
 import tkinter as tk
 from tkinter import filedialog, messagebox, ttk
-from tktooltip import ToolTip
 
+from tktooltip import ToolTip
 
 # Default directory for saving/loading parameters
 DEFAULTDIR = r"C:\Users\delwintanto\Documents\Joule_Heating_Data\Experiment Parameters"
@@ -31,9 +31,7 @@ class LabeledEntry:
         entry (ttk.Entry): The entry field component.
     """
 
-    def __init__(
-        self, master, label, row, col=0, colspan=2, var=None, width=40, tooltip=None
-    ):
+    def __init__(self, master, label, row, col=0, colspan=2, var=None, width=40, tooltip=None):
         """Initialise the LabeledEntry widget and place it in the GUI.
 
         Args:
@@ -50,9 +48,7 @@ class LabeledEntry:
         self.label = ttk.Label(master, text=label)
         self.entry = ttk.Entry(master, textvariable=self.var, width=width)
         self.label.grid(row=row, column=col, sticky=tk.W, padx=5, pady=2)
-        self.entry.grid(
-            row=row, column=col + 1, columnspan=colspan, sticky=tk.EW, padx=5, pady=2
-        )
+        self.entry.grid(row=row, column=col + 1, columnspan=colspan, sticky=tk.EW, padx=5, pady=2)
         if tooltip:
             ToolTip(self.entry, msg=tooltip, delay=0.3)
 
@@ -113,6 +109,9 @@ def parse_floats(input_str):
 
     Returns:
         list[float]: List of parsed float values.
+
+    Raises:
+        ValueError: If any value cannot be converted to a float.
     """
     return list(map(float, input_str.split(",")))
 
@@ -142,7 +141,8 @@ def check_empty_fields(field_dict):
         field_dict (dict): Mapping from label text to ``(tk.Variable, tooltip)``.
 
     Returns:
-        list[str]: Labels (without unit hints) whose variables are empty.
+        list[str]: Labels with any parenthetical content removed (e.g., units,
+            hints) for fields whose variables are empty.
     """
     return [
         re.sub(r"\s*\([^)]*\)", "", label)
@@ -184,10 +184,9 @@ def save_settings(file_vars):
         # Save to text file
         else:
             with open(file_path, "w", encoding="utf-8", newline="") as file:
-                file.writelines(f"{key}: {value}\n" for key,
-                                value in file_vars.items())
+                file.writelines(f"{key}: {value}\n" for key, value in file_vars.items())
         show_info("Parameters saved successfully!")
-    except IOError as e:
+    except OSError as e:
         show_error(f"Error saving file: {e}")
 
 
@@ -212,12 +211,12 @@ def load_settings(target_vars):
     try:
         # Load from JSON
         if ext == ".json":
-            with open(file_path, "r", encoding="utf-8") as file:
+            with open(file_path, encoding="utf-8") as file:
                 data = json.load(file)
         # Load from text file
         else:
             data = {}
-            with open(file_path, "r", encoding="utf-8") as file:
+            with open(file_path, encoding="utf-8") as file:
                 for line in file:
                     if ": " in line:
                         parts = line.strip().split(": ", 1)
@@ -243,7 +242,7 @@ def load_settings(target_vars):
                 elif isinstance(var, tk.IntVar):
                     var.set(1 if value.lower() == "manual" else 0)
         show_info("Parameters loaded successfully!")
-    except IOError as e:
+    except OSError as e:
         show_error(f"Error loading file: {e}")
 
 
@@ -258,17 +257,13 @@ def create_radio_button(master, label_text, options, var, row_counter):
         row_counter (RowCounter): Row counter for widget placement.
     """
     row = row_counter.next()
-    ttk.Label(master, text=label_text).grid(
-        row=row, column=0, sticky=tk.W, padx=5, pady=2
-    )
+    ttk.Label(master, text=label_text).grid(row=row, column=0, sticky=tk.W, padx=5, pady=2)
     for i, (text, tooltip) in enumerate(options, 1):
         rb = ttk.Radiobutton(
             master,
             text=text,
             variable=var,
-            value=text.split()[0]
-            if label_text.startswith("Temperature")
-            else text,
+            value=text.split()[0] if label_text.startswith("Temperature") else text,
         )
         rb.grid(row=row, column=i, sticky=tk.W, padx=5, pady=2)
         ToolTip(rb, msg=tooltip, delay=0.3)

@@ -15,14 +15,14 @@ Author       : Delwin Tanto
 Last updated : 11 Dec 2025
 """
 
-from .device_utils import init_devices, close_all, shutdown_devices, enable_lasers
+from .device_utils import close_all, enable_lasers, init_devices, shutdown_devices
 from .power_supply_etm import (
-    etm_set_onoff,
-    etm_set_current,
-    etm_set_voltage,
+    PSUError,
     etm_read_current,
     etm_read_voltage,
-    PSUError,
+    etm_set_current,
+    etm_set_onoff,
+    etm_set_voltage,
 )
 from .temp_sensor_utils import read_temperature
 

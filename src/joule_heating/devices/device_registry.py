@@ -9,13 +9,10 @@ Last updated : 15 Dec 2025
 
 # Hardware ID substrings for device detection
 DEVICE_HWIDS = {
-    "PSU": "AB0P06NMA",            # eTM-5050PC power supply
-    "YCR_SENSOR": "AQ03H99EA",     # YCR-D30180AR IR thermometer
+    "PSU": "AB0P06NMA",  # eTM-5050PC power supply
+    "YCR_SENSOR": "AQ03H99EA",  # YCR-D30180AR IR thermometer
     "OPTRIS_SENSOR": "10C4:834B",  # Optris OPTCTL3MLCF4 IR thermometer
 }
 
 # Auto-generate reverse mapping (HWID -> friendly name) for error messages
-DEVICE_NAMES = {
-    hwid: name.replace("_", " ")
-    for name, hwid in DEVICE_HWIDS.items()
-}
+DEVICE_NAMES = {hwid: name.replace("_", " ") for name, hwid in DEVICE_HWIDS.items()}

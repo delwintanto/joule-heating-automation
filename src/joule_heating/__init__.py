@@ -7,7 +7,7 @@ Author       : Delwin Tanto
 Last updated : 15 Dec 2025
 """
 
-from importlib.metadata import version, PackageNotFoundError
+from importlib.metadata import PackageNotFoundError, version
 
 try:
     __version__ = version("joule-heating-automation")

@@ -1,4 +1,3 @@
-
 """Utilities for printing concise experiment summaries to the console.
 
 This module provides helper functions used by the Joule heating scripts to
@@ -49,14 +48,12 @@ def print_summary(
         print(f"{'PID gains:':<22} Kp: {kp:.3f}, Ki: {ki:.3f}, Kd: {kd:.3f}")
 
     print(
-        f"{'Total time (s):':<22} "
-        f"{saved_data['Time (s)'].max():.2f}" if len(saved_data) else 'NaN'
+        f"{'Total time (s):':<22} " f"{saved_data['Time (s)'].max():.2f}"
+        if len(saved_data)
+        else "NaN"
     )
     temp_max = saved_data["Temperature (°C)"].max(skipna=True)
-    print(
-        f"{'Max temperature (°C):':<22} "
-        f"{temp_max:.2f}" if temp_max == temp_max else 'NaN'
-    )
+    print(f"{'Max temperature (°C):':<22} " f"{temp_max:.2f}" if temp_max == temp_max else "NaN")
     print(f"{'Data file:':<22} {final_csv_path}")
     print("-" * 50)
 
@@ -101,16 +98,14 @@ def print_steps(col1, col2, cc=True):
                 *_, length = ramp
 
                 for j in range(min(5, length)):  # Print first 5 steps
-                    print(
-                        f"{i + j + 1:<10} {col1_list[i + j]:<18} {col2_list[i + j]:<18}")
+                    print(f"{i + j + 1:<10} {col1_list[i + j]:<18} {col2_list[i + j]:<18}")
 
                 if length > 10:  # Compressed middle section
                     print(" " * 10 + "...")
 
                 # Print last 5 steps if long enough
                 for j in range(max(5, length - 5), length):
-                    print(
-                        f"{i + j + 1:<10} {col1_list[i + j]:<18} {col2_list[i + j]:<18}")
+                    print(f"{i + j + 1:<10} {col1_list[i + j]:<18} {col2_list[i + j]:<18}")
 
                 i += length  # Skip entire ramp
             else:

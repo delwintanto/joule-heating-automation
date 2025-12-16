@@ -7,14 +7,16 @@ Author       : Delwin Tanto
 Last updated : 10 Dec 2025
 """
 
-from datetime import datetime
 import os
 import tkinter as tk
+from datetime import datetime
 from tkinter import messagebox, ttk
+
 from tktooltip import ToolTip
 
 from joule_heating.devices import enable_lasers
 from joule_heating.plotting import close_plot, plot_data, update_live_plot
+
 from .common import (
     LabeledEntry,
     RowCounter,
@@ -52,14 +54,10 @@ def gui_pid(psu=None, ycr=None, optris=None):
 
     # Create scrollable container
     canvas = tk.Canvas(gui_window, width=410, height=700, highlightthickness=0)
-    scrollbar = ttk.Scrollbar(
-        gui_window, orient="vertical", command=canvas.yview)
+    scrollbar = ttk.Scrollbar(gui_window, orient="vertical", command=canvas.yview)
     container = ttk.Frame(canvas)
 
-    container.bind(
-        "<Configure>",
-        lambda e: canvas.configure(scrollregion=canvas.bbox("all"))
-    )
+    container.bind("<Configure>", lambda e: canvas.configure(scrollregion=canvas.bbox("all")))
 
     canvas.create_window((0, 0), window=container, anchor="nw")
     canvas.configure(yscrollcommand=scrollbar.set)
@@ -69,7 +67,8 @@ def gui_pid(psu=None, ycr=None, optris=None):
 
     # Bind mousewheel for scrolling
     def _on_mousewheel(event):
-        canvas.yview_scroll(int(-1*(event.delta/120)), "units")
+        canvas.yview_scroll(int(-1 * (event.delta / 120)), "units")
+
     canvas.bind_all("<MouseWheel>", _on_mousewheel)
 
     row = RowCounter()
@@ -117,30 +116,27 @@ def gui_pid(psu=None, ycr=None, optris=None):
     def toggle_lasers():
         """Toggle lasers on/off for sample alignment."""
         if not devices["ycr"] and not devices["optris"]:
-            show_error(
-                "Temperature sensors not initialized. Cannot toggle lasers.")
+            show_error("Temperature sensors not initialized. Cannot toggle lasers.")
             return
         try:
             lasers_on[0] = not lasers_on[0]
             enable_lasers(
-                ycr_sensor=devices["ycr"], optris_sensor=devices["optris"], on=lasers_on[0])
+                ycr_sensor=devices["ycr"], optris_sensor=devices["optris"], on=lasers_on[0]
+            )
             # Update button appearance based on laser state
             if lasers_on[0]:
                 btn.config(style="LaserOn.TButton")
             else:
                 btn.config(style="TButton")
-        except (IOError, OSError, RuntimeError) as e:
+        except (OSError, RuntimeError) as e:
             show_error(f"Failed to toggle lasers: {e}")
 
     # Configure style for laser button
     style = ttk.Style()
-    style.configure("LaserOn.TButton", background="#FF0000",
-                    foreground="black")
+    style.configure("LaserOn.TButton", background="#FF0000", foreground="black")
 
-    btn = ttk.Button(container, text="Toggle Lasers ON/OFF",
-                     command=toggle_lasers)
-    btn.grid(row=laser_row, column=1, columnspan=2,
-             sticky=tk.EW, padx=5, pady=(0, 10))
+    btn = ttk.Button(container, text="Toggle Lasers ON/OFF", command=toggle_lasers)
+    btn.grid(row=laser_row, column=1, columnspan=2, sticky=tk.EW, padx=5, pady=(0, 10))
     ToolTip(
         btn,
         msg="Toggle both lasers on/off for sample alignment verification.",
@@ -238,9 +234,7 @@ def gui_pid(psu=None, ycr=None, optris=None):
         dynamic_row.next(len(common_fields))
 
         # Draws mode specific fields
-        mode_fields = (
-            discrete_fields if input_mode.get() == "Discrete" else continuous_fields
-        )
+        mode_fields = discrete_fields if input_mode.get() == "Discrete" else continuous_fields
         draw_fields(mode_fields, dynamic_row.value)
         dynamic_row.next(len(mode_fields))
 
@@ -250,10 +244,8 @@ def gui_pid(psu=None, ycr=None, optris=None):
         )
 
         for i, (text, val) in enumerate([("Auto", 0), ("Manual", 1)], 1):
-            rb = ttk.Radiobutton(container, text=text,
-                                 variable=tuning_mode, value=val)
-            rb.grid(row=dynamic_row.value - 1, column=i,
-                    sticky=tk.W, padx=5, pady=2)
+            rb = ttk.Radiobutton(container, text=text, variable=tuning_mode, value=val)
+            rb.grid(row=dynamic_row.value - 1, column=i, sticky=tk.W, padx=5, pady=2)
             tooltip_msg = (
                 "Uses relay feedback to automatically tune the PID controller.\n"
                 "Select this option if PID gains are unknown."
@@ -268,8 +260,7 @@ def gui_pid(psu=None, ycr=None, optris=None):
 
         # Draws PID fields based on tuning mode
         if tuning_mode.get() == 1:
-            draw_fields({k: pid_vars[k] for k in (
-                "Kp", "Ki", "Kd")}, dynamic_row.next(3))
+            draw_fields({k: pid_vars[k] for k in ("Kp", "Ki", "Kd")}, dynamic_row.next(3))
         else:
             draw_fields(
                 {"Tuning Duration (s)": pid_vars["Tuning Duration (s)"]},
@@ -300,11 +291,8 @@ def gui_pid(psu=None, ycr=None, optris=None):
     # -------------------- Status Display Section --------------------
 
     # Create a labeled frame for status display
-    status_frame = ttk.LabelFrame(
-        container, text="Experiment Status", padding=10)
-    status_frame.grid(
-        row=last_row + 1, column=0, columnspan=3, sticky=tk.EW, padx=10, pady=10
-    )
+    status_frame = ttk.LabelFrame(container, text="Experiment Status", padding=10)
+    status_frame.grid(row=last_row + 1, column=0, columnspan=3, sticky=tk.EW, padx=10, pady=10)
 
     # Initialize status variables
     status_vars = {
@@ -397,8 +385,7 @@ def gui_pid(psu=None, ycr=None, optris=None):
             # Handles temperature input based on the selected mode
             if input_mode.get() == "Discrete":
                 # Discrete mode - parse lists of temperatures and durations
-                temps, durs = [parse_floats(v[0].get())
-                               for v in discrete_fields.values()]
+                temps, durs = [parse_floats(v[0].get()) for v in discrete_fields.values()]
                 if len(temps) != len(durs):
                     raise ValueError("Mismatch in temperatures and durations.")
                 if not all(x > 0 for x in durs):
@@ -407,26 +394,20 @@ def gui_pid(psu=None, ycr=None, optris=None):
             else:
                 # Continuous mode - calculates temperatures from range
                 s = parse_floats(continuous_fields["Start Temp (°C)"][0].get())
-                s_dur = parse_floats(
-                    continuous_fields["Initial Heating Duration (s)"][0].get()
-                )
+                s_dur = parse_floats(continuous_fields["Initial Heating Duration (s)"][0].get())
                 e = float(continuous_fields["End Temp (°C)"][0].get())
                 st = float(continuous_fields["Step Temp (°C)"][0].get())
                 dur = float(continuous_fields["Step Duration (s)"][0].get())
 
                 if len(s) != len(s_dur):
-                    raise ValueError(
-                        "Mismatch in starting temperatures and durations.")
+                    raise ValueError("Mismatch in starting temperatures and durations.")
                 if s[-1] == e and st != 0:
-                    raise ValueError(
-                        "Zero temperature difference with non-zero step.")
+                    raise ValueError("Zero temperature difference with non-zero step.")
                 if st == 0 and s[-1] != e:
                     raise ValueError("Non-zero temp range needs step.")
                 st = abs(st) if s[-1] < e else -abs(st)
                 steps = int((e - s[-1]) / st) + 1
-                output["temps"] = s + [
-                    round(s[-1] + (i + 1) * st, 1) for i in range(steps - 1)
-                ]
+                output["temps"] = s + [round(s[-1] + (i + 1) * st, 1) for i in range(steps - 1)]
                 output["durs"] = s_dur + [dur] * (steps - 1)
 
             # Handles PID parameters based on tuning mode
@@ -436,8 +417,7 @@ def gui_pid(psu=None, ycr=None, optris=None):
                 ]
                 output["tuning_method"] = "Manual tuning"
             else:
-                output["tuning_time"] = float(
-                    pid_vars["Tuning Duration (s)"][0].get())
+                output["tuning_time"] = float(pid_vars["Tuning Duration (s)"][0].get())
                 output["tuning_method"] = "Auto tuning"
 
             # Confirms before starting the experiment
@@ -447,11 +427,11 @@ def gui_pid(psu=None, ycr=None, optris=None):
                 + (0 if tuning_mode.get() else output["tuning_time"])
             )
 
+            tuning_method = "manually entered PID gains" if tuning_mode.get() else "auto-tuning"
             if not messagebox.askyesno(
                 "Confirm",
                 f"Approximate length of the experiment: {total_time}\n"
-                "Start experiment with "
-                f"{"manually entered PID gains" if tuning_mode.get() else "auto-tuning"}?",
+                f"Start experiment with {tuning_method}?",
             ):
                 return
 
@@ -502,28 +482,20 @@ def gui_pid(psu=None, ycr=None, optris=None):
             }
         ),
     )
-    btn_save.grid(row=button_row, column=0, columnspan=3,
-                  sticky=tk.EW, padx=10, pady=2)
+    btn_save.grid(row=button_row, column=0, columnspan=3, sticky=tk.EW, padx=10, pady=2)
     ToolTip(btn_save, msg="Save parameters to a file.", delay=0.3)
 
     # Load button
     button_row += 1
-    btn_load = ttk.Button(
-        container, text="Load Parameters (Ctrl+L)", command=load_and_refresh
-    )
-    btn_load.grid(row=button_row, column=0, columnspan=3,
-                  sticky=tk.EW, padx=10, pady=2)
+    btn_load = ttk.Button(container, text="Load Parameters (Ctrl+L)", command=load_and_refresh)
+    btn_load.grid(row=button_row, column=0, columnspan=3, sticky=tk.EW, padx=10, pady=2)
     ToolTip(btn_load, msg="Load parameters from a file.", delay=0.3)
 
     # Start button
     button_row += 1
-    btn_start = ttk.Button(
-        container, text="Start Experiment (F2)", command=start)
-    btn_start.grid(row=button_row, column=0, columnspan=3,
-                   sticky=tk.EW, padx=10, pady=(10, 2))
-    ToolTip(
-        btn_start, msg="Start the experiment with the entered parameters.", delay=0.3
-    )
+    btn_start = ttk.Button(container, text="Start Experiment (F2)", command=start)
+    btn_start.grid(row=button_row, column=0, columnspan=3, sticky=tk.EW, padx=10, pady=(10, 2))
+    ToolTip(btn_start, msg="Start the experiment with the entered parameters.", delay=0.3)
 
     # Skip button
     button_row += 1
@@ -533,8 +505,7 @@ def gui_pid(psu=None, ycr=None, optris=None):
         command=lambda: control_vars["skip_step"].set(True),
         state="disabled",
     )
-    btn_skip.grid(row=button_row, column=0, columnspan=3,
-                  sticky=tk.EW, padx=10, pady=2)
+    btn_skip.grid(row=button_row, column=0, columnspan=3, sticky=tk.EW, padx=10, pady=2)
     ToolTip(
         btn_skip,
         msg="Skip the current heating step and move to the next one.",
@@ -544,9 +515,7 @@ def gui_pid(psu=None, ycr=None, optris=None):
 
     # -------------------- Keyboard Shortcuts --------------------
 
-    gui_window.bind(
-        "<F2>", lambda e: start()
-    )
+    gui_window.bind("<F2>", lambda e: start())
     gui_window.bind(
         "<F5>",
         lambda e: control_vars["skip_step"].set(True),
@@ -614,9 +583,7 @@ def create_gui_callbacks_pid(gui_window, status_vars, control_vars):
         tuple: (update_status, check_skip) callback functions.
     """
 
-    def update_status(
-        phase, temperature, setpoint, current, voltage, resistance, time_remaining
-    ):
+    def update_status(phase, temperature, setpoint, current, voltage, resistance, time_remaining):
         """Update GUI status display from experiment thread.
 
         Args:
@@ -632,14 +599,12 @@ def create_gui_callbacks_pid(gui_window, status_vars, control_vars):
             None
         """
         gui_window.after(0, lambda: status_vars["phase"].set(phase))
-        gui_window.after(
-            0, lambda: status_vars["temperature"].set(temperature))
+        gui_window.after(0, lambda: status_vars["temperature"].set(temperature))
         gui_window.after(0, lambda: status_vars["setpoint"].set(setpoint))
         gui_window.after(0, lambda: status_vars["current"].set(current))
         gui_window.after(0, lambda: status_vars["voltage"].set(voltage))
         gui_window.after(0, lambda: status_vars["resistance"].set(resistance))
-        gui_window.after(
-            0, lambda: status_vars["time_remaining"].set(time_remaining))
+        gui_window.after(0, lambda: status_vars["time_remaining"].set(time_remaining))
 
     def check_skip():
         """Check if skip button was pressed in the GUI.
@@ -738,8 +703,7 @@ def create_plot_callbacks_pid(gui_window, plot_position="+30+30"):
         Returns:
             None
         """
-        gui_window.after(0, lambda: update_live_plot(
-            fig, axes, lines, data=data))
+        gui_window.after(0, lambda: update_live_plot(fig, axes, lines, data=data))
 
     def show_final_plot(saved_data, sample_name):
         """Show final summary plot from main thread.

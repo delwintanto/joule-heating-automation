@@ -1,5 +1,4 @@
-"""
-Optris CT / CTlaser / CTvideo binary protocol reader/writer
+"""Optris CT / CTlaser / CTvideo binary protocol reader/writer.
 
 Features:
 - Read: temperature (°C), emissivity, transmission, laser state
@@ -22,10 +21,11 @@ Last updated : 09 Oct 2025
 """
 
 import math
+
 import serial
+
 from .device_registry import DEVICE_HWIDS
 from .port_detect import find_port_by_hwid
-
 
 # Constants
 HWID_SUBSTR = DEVICE_HWIDS["OPTRIS_SENSOR"]  # OPTCTL3MLCF4 hardware ID substring
@@ -36,6 +36,7 @@ CHECKSUM = True  # Whether to use checksum for SET commands
 
 # -------------------- Custom exception --------------------
 
+
 class OptrisIRError(Exception):
     """Base exception for IR sensor related errors."""
 
@@ -45,6 +46,7 @@ class OptrisIRError(Exception):
 
 
 # -------------------- Initialisation --------------------
+
 
 def optris_open(port=None, baud=115200):
     """
@@ -83,6 +85,7 @@ def optris_open(port=None, baud=115200):
 
 # -------------------- Write commands --------------------
 
+
 def _checksum_xor(*bytes_iter):
     """Compute XOR checksum over all command bytes.
 
@@ -97,7 +100,7 @@ def _checksum_xor(*bytes_iter):
     """
     cs = 0
     for b in bytes_iter:
-        cs ^= (b & 0xFF)
+        cs ^= b & 0xFF
     return cs
 
 
@@ -129,8 +132,7 @@ def _optris_write_word_2byte(temp_sensor, cmd, value_u16, checksum=CHECKSUM):
     temp_sensor.write(frame)
     data = temp_sensor.read(2)
     if len(data) != 2:
-        raise OptrisIRError(
-            f"Expected 2 bytes after SET, received {len(data)}")
+        raise OptrisIRError(f"Expected 2 bytes after SET, received {len(data)}")
     return (data[0] << 8) | data[1]
 
 
@@ -186,8 +188,7 @@ def optris_set_emissivity(temp_sensor, *, emissivity, checksum=CHECKSUM):
     if not 0.0 <= emissivity <= 1.0:
         raise OptrisIRError("Emissivity must be between 0 and 1")
     raw = int(round(emissivity * 1000))
-    echoed = _optris_write_word_2byte(
-        temp_sensor, 0x84, raw, checksum)  # SET emissivity
+    echoed = _optris_write_word_2byte(temp_sensor, 0x84, raw, checksum)  # SET emissivity
     return echoed / 1000.0
 
 
@@ -212,8 +213,7 @@ def optris_set_transmission(temp_sensor, *, transmission, checksum=CHECKSUM):
     if not 0.0 <= transmission <= 1.0:
         raise OptrisIRError("Transmission must be between 0 and 1")
     raw = int(round(transmission * 1000))
-    echoed = _optris_write_word_2byte(
-        temp_sensor, 0x85, raw, checksum)  # SET transmission
+    echoed = _optris_write_word_2byte(temp_sensor, 0x85, raw, checksum)  # SET transmission
     return echoed / 1000.0
 
 
@@ -232,9 +232,7 @@ def optris_set_laser(temp_sensor, *, on, checksum=CHECKSUM):
     Returns:
         bool: Laser state confirmed by the device (True=ON, False=OFF).
     """
-    return _optris_write_word_1byte(
-        temp_sensor, 0xA5, 1 if on else 0, checksum
-    )  # SET laser ON/OFF
+    return _optris_write_word_1byte(temp_sensor, 0xA5, 1 if on else 0, checksum)  # SET laser ON/OFF
 
 
 def optris_set_avg_time(temp_sensor, *, avg_time, checksum=CHECKSUM):
@@ -258,8 +256,7 @@ def optris_set_avg_time(temp_sensor, *, avg_time, checksum=CHECKSUM):
     if not 0.0 <= avg_time <= 6553.5:
         raise OptrisIRError("avg_time must be between 0.0 and 6553.5")
     raw = int(round(avg_time * 10))
-    echoed = _optris_write_word_2byte(
-        temp_sensor, 0x86, raw, checksum)  # SET averaging time
+    echoed = _optris_write_word_2byte(temp_sensor, 0x86, raw, checksum)  # SET averaging time
     return echoed / 10.0
 
 
@@ -303,6 +300,7 @@ def optris_set_lock(temp_sensor, *, lock, checksum=CHECKSUM):
 
 
 # -------------------- Read commands --------------------
+
 
 def _optris_read_word_2byte(temp_sensor, cmd_byte):
     """Send a read command and return 16-bit big-endian reply.
@@ -370,8 +368,7 @@ def optris_read_process_temp(temp_sensor):
     Returns:
         float: Temperature in degrees Celsius.
     """
-    raw = _optris_read_word_2byte(
-        temp_sensor, 0x01)  # READ proccess temperature
+    raw = _optris_read_word_2byte(temp_sensor, 0x01)  # READ proccess temperature
     return (raw - 1000) / 10.0
 
 
@@ -540,24 +537,15 @@ if __name__ == "__main__":
         # optris_set_lock(optris_sensor, lock=True)  # Lock panel keys
         # optris_set_lock(optris_sensor, lock=False)  # Unlock panel keys
 
-        print(
-            f"Emissivity          : {optris_read_emissivity(optris_sensor):.3f}")
-        print(
-            f"Transmission        : {optris_read_transmission(optris_sensor):.3f}")
-        print(
-            f"Process temperature : {optris_read_process_temp(optris_sensor):.1f} °C")
-        print(
-            f"Head temperature    : {optris_read_head_temp(optris_sensor):.1f} °C")
-        print(
-            f"Box temperature     : {optris_read_box_temp(optris_sensor):.1f} °C")
-        print(
-            f"Actual temperature  : {optris_read_actual_temp(optris_sensor):.1f} °C")
-        print(
-            f"Laser status        : {'ON' if optris_read_laser(optris_sensor) else 'OFF'}")
-        print(
-            f"Avg time            : {optris_read_avg_time(optris_sensor):.1f} s")
-        print(
-            f"Avg mode            : {'ON' if optris_read_avg_mode(optris_sensor) else 'OFF'}")
+        print(f"Emissivity          : {optris_read_emissivity(optris_sensor):.3f}")
+        print(f"Transmission        : {optris_read_transmission(optris_sensor):.3f}")
+        print(f"Process temperature : {optris_read_process_temp(optris_sensor):.1f} °C")
+        print(f"Head temperature    : {optris_read_head_temp(optris_sensor):.1f} °C")
+        print(f"Box temperature     : {optris_read_box_temp(optris_sensor):.1f} °C")
+        print(f"Actual temperature  : {optris_read_actual_temp(optris_sensor):.1f} °C")
+        print(f"Laser status        : {'ON' if optris_read_laser(optris_sensor) else 'OFF'}")
+        print(f"Avg time            : {optris_read_avg_time(optris_sensor):.1f} s")
+        print(f"Avg mode            : {'ON' if optris_read_avg_mode(optris_sensor) else 'OFF'}")
         print(
             f"Panel lock          : "
             f"{'LOCKED' if optris_read_lock(optris_sensor) else 'UNLOCKED'}"

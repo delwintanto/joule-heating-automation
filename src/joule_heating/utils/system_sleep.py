@@ -27,12 +27,11 @@ Author       : Delwin Tanto
 Last updated : 18 Jun 2025
 """
 
-import platform
 import ctypes
+import platform
 import subprocess
-from typing import Optional
 from contextlib import contextmanager
-
+from typing import Optional
 
 # --- Windows SetThreadExecutionState flags ---
 ES_CONTINUOUS = 0x80000000

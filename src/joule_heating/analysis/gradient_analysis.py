@@ -28,7 +28,7 @@ Usage:
         calculate_amplitude,
         plot_data,
     )
-    
+
     # Example usage:
     results = detect_peaks_and_valleys(time_array, temp_array)
     period = calculate_period(results["combined_maxima"], time_array)
@@ -49,9 +49,7 @@ import numpy as np
 from scipy.signal import argrelextrema, find_peaks, savgol_filter
 
 
-def detect_sharp_temp_rise(
-    time_data, temp_data, rise_threshold=300.0, max_rise_time=2.0
-):
+def detect_sharp_temp_rise(time_data, temp_data, rise_threshold=300.0, max_rise_time=2.0):
     """Detect the first occurrence of a sharp temperature rise.
 
     Scans the time-series to find the earliest point where the temperature
@@ -67,9 +65,8 @@ def detect_sharp_temp_rise(
         int or None: Index of the detected rise or ``None`` if not found.
     """
     for i, t_start in enumerate(time_data):
-        j_indices = np.where(
-            (time_data > t_start) & (time_data - t_start <= max_rise_time)
-        )[0]
+        j_indices = np.where((time_data > t_start) & (
+            time_data - t_start <= max_rise_time))[0]
         # Check if there is a sharp jump in temperature
         if len(j_indices) > 0:
             temp_diff = temp_data[j_indices] - temp_data[i]
@@ -141,8 +138,7 @@ def detect_peaks_and_valleys(
 
     # Local minima in gradient
     all_gradient_minima = argrelextrema(
-        np.abs(gradient), np.less, order=extrema_order
-    )[0]
+        np.abs(gradient), np.less, order=extrema_order)[0]
 
     # Find the last maxima before each minima
     all_drop_points = []
@@ -163,8 +159,7 @@ def detect_peaks_and_valleys(
     # Find the earliest peak-valley pair start time
     if len(peak_valley_pairs) > 0:
         first_pair_start = min(
-            [pair[0] for pair in peak_valley_pairs]
-        )  # first peak time
+            [pair[0] for pair in peak_valley_pairs])  # first peak time
     else:
         first_pair_start = len(t)  # if no pairs, set to end of data
 
@@ -182,11 +177,9 @@ def detect_peaks_and_valleys(
 
     # Combine gradient_maxima with peaks, and gradient_minima with valleys
     combined_maxima = np.sort(
-        np.unique(np.concatenate((gradient_maxima, peaks)))
-    ).astype(int)
+        np.unique(np.concatenate((gradient_maxima, peaks)))).astype(int)
     combined_minima = np.sort(
-        np.unique(np.concatenate((gradient_minima, valleys)))
-    ).astype(int)
+        np.unique(np.concatenate((gradient_minima, valleys)))).astype(int)
 
     return {
         "time": t,
@@ -196,7 +189,7 @@ def detect_peaks_and_valleys(
         "temp_smooth": temp_smooth,
         "gradient": gradient,
         "start_idx": start_idx,
-        "peak_valley_pairs": peak_valley_pairs
+        "peak_valley_pairs": peak_valley_pairs,
     }
 
 
@@ -258,6 +251,7 @@ def calculate_amplitude(peaks, valleys, x, y):
 if __name__ == "__main__":
     import tkinter as tk
     from tkinter import filedialog
+
     import matplotlib.pyplot as plt
     import pandas as pd
 
@@ -293,7 +287,8 @@ if __name__ == "__main__":
             print(f"Average period: {period:.2f} seconds")
             print(f"Average amplitude: {amplitude:.2f} °C")
             print(
-                f"Number of peak and valley pairs detected: {len(results["peak_valley_pairs"])}")
+                f"Number of peak and valley pairs detected: {len(results['peak_valley_pairs'])}"
+            )
 
             def _plot_data(t, analysed_data):
                 """Plots temperature data with detected features and gradient.

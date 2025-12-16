@@ -30,8 +30,8 @@ Dependencies:
 
 import math
 
-from .temp_sensor_optris import optris_read_actual_temp, OptrisIRError
-from .temp_sensor_ycr import ycr_read_temp, YCRIRError
+from .temp_sensor_optris import OptrisIRError, optris_read_actual_temp
+from .temp_sensor_ycr import YCRIRError, ycr_read_temp
 
 
 def read_temperature(ycr_sensor, optris_sensor):
