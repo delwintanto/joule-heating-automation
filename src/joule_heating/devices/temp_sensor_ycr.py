@@ -23,21 +23,11 @@ import struct
 import minimalmodbus
 
 from .device_registry import DEVICE_HWIDS
+from .exceptions import TemperatureSensorError
 from .port_detect import find_port_by_hwid
 
 # Constants
 HWID_SUBSTR = DEVICE_HWIDS["YCR_SENSOR"]  # YCR-D30180AR hardware ID substring
-
-
-# -------------------- Custom exception --------------------
-
-
-class YCRIRError(Exception):
-    """Base exception for IR sensor related errors."""
-
-    def __init__(self, message):
-        self.message = message
-        super().__init__(self.message)
 
 
 # -------------------- Helper functions --------------------
@@ -100,11 +90,15 @@ def ycr_open(port=None, slave_address=1):
         minimalmodbus.Instrument: Configured Modbus device instance.
 
     Raises:
-        RuntimeError: If the port cannot be discovered by HWID.
-        YCRIRError: If connection fails after all retry attempts.
+        TemperatureSensorError: If the device cannot be found or connection fails.
     """
     if port is None:
         port = find_port_by_hwid(HWID_SUBSTR)
+        if port is None:
+            raise TemperatureSensorError(
+                "YCR temperature sensor not detected. "
+                "Ensure it is connected properly and powered on."
+            )
 
     try:
         device = minimalmodbus.Instrument(port, slave_address)
@@ -118,7 +112,8 @@ def ycr_open(port=None, slave_address=1):
         print(f"YCR sensor initialised on {port}.")
         return device
     except (OSError, minimalmodbus.ModbusException) as e:
-        raise YCRIRError(f"Failed to initialise YCR-D30180AR: {e}") from e
+        raise TemperatureSensorError(
+            f"Failed to initialise YCR-D30180AR: {e}") from e
 
 
 # -------------------- Temperature --------------------
@@ -140,7 +135,13 @@ def ycr_read_temp(temp_sensor):
     try:
         regs = temp_sensor.read_registers(0x0400, 2)
         return _regs_to_float_be_lowfirst(regs) * 1.205
-    except (TimeoutError, YCRIRError, struct.error, OSError, minimalmodbus.ModbusException):
+    except (
+        TimeoutError,
+        TemperatureSensorError,
+        struct.error,
+        OSError,
+        minimalmodbus.ModbusException
+    ):
         return float("nan")
 
 
@@ -178,10 +179,10 @@ def ycr_set_emissivity(temp_sensor, *, emissivity):
         emissivity (float): Desired emissivity in range [0.1, 1.0].
 
     Raises:
-        YCRIRError: If emissivity is outside valid range [0.1, 1.0].
+        TemperatureSensorError: If emissivity is outside valid range [0.1, 1.0].
     """
     if not 0.1 <= emissivity <= 1.0:
-        raise YCRIRError("Emissivity must be between 0.1 and 1.0")
+        raise TemperatureSensorError("Emissivity must be between 0.1 and 1.0")
 
     try:
         regs = _float_to_regs_be_lowfirst(emissivity)
@@ -243,10 +244,11 @@ def ycr_set_avg_time(temp_sensor, *, avg_time):
             or in range [0.1, 999.9].
 
     Raises:
-        YCRIRError: If avg_time is outside valid range.
+        TemperatureSensorError: If avg_time is outside valid range.
     """
     if not (avg_time == 0 or 0.1 <= avg_time <= 999.9):
-        raise YCRIRError("Averaging time must be 0 (real-time) or between 0.1 and 999.9 seconds")
+        raise TemperatureSensorError(
+            "Averaging time must be 0 (real-time) or between 0.1 and 999.9 seconds")
 
     try:
         regs = _float_to_regs_be_lowfirst(avg_time)

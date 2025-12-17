@@ -5,6 +5,7 @@ and IR temperature sensors used in Joule heating experiments.
 
 Modules:
     - device_utils: Device initialization and shutdown utilities
+    - exceptions: Custom exception definitions for device errors
     - power_supply_etm: Power supply unit control functions
     - temp_sensor_utils: Temperature sensor reading utilities
     - temp_sensor_ycr: YCR IR sensor specific functions
@@ -12,12 +13,12 @@ Modules:
     - port_detect: Serial port detection utilities
 
 Author       : Delwin Tanto
-Last updated : 11 Dec 2025
+Last updated : 17 Dec 2025
 """
 
 from .device_utils import close_all, enable_lasers, init_devices, shutdown_devices
+from .exceptions import DeviceError, PSUError, TemperatureSensorError
 from .power_supply_etm import (
-    PSUError,
     etm_read_current,
     etm_read_voltage,
     etm_set_current,
@@ -36,6 +37,8 @@ __all__ = [
     "etm_set_voltage",
     "etm_read_current",
     "etm_read_voltage",
+    "DeviceError",
     "PSUError",
+    "TemperatureSensorError",
     "read_temperature",
 ]

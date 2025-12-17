@@ -32,6 +32,7 @@ import pandas as pd
 from joule_heating.data import print_steps, print_summary, save_finalise, save_row, save_start
 from joule_heating.devices import (
     PSUError,
+    TemperatureSensorError,
     close_all,
     etm_read_current,
     etm_read_voltage,
@@ -474,7 +475,7 @@ if __name__ == "__main__":
         # Initialise communication with IR temperature sensors and power supply
         try:
             psu, ycr_temp_sensor, optris_temp_sensor = init_devices()
-        except RuntimeError as e:
+        except (PSUError, TemperatureSensorError) as e:
             # Device initialization failed - show error dialog
             messagebox.showerror(
                 "Device Connection Error",
@@ -496,9 +497,16 @@ if __name__ == "__main__":
             close_all(psu, ycr_temp_sensor, optris_temp_sensor)
             raise SystemExit("Program stopped.")
 
+        # Position console window to the right of GUI immediately
+        gui_window.update_idletasks()  # Ensure geometry is updated
+        gui_x = gui_window.winfo_x()
+        gui_width = gui_window.winfo_width()
+        position_console_window(gui_x + gui_width + 10, 520, 800, 300)
+
         # Create GUI callback functions
         update_status, check_skip = create_gui_callbacks_cc(
-            gui_window, status_vars, control_vars)
+            gui_window, status_vars, control_vars
+        )
 
         # Flag to prevent multiple simultaneous runs
         experiment_started = [False]
@@ -529,8 +537,8 @@ if __name__ == "__main__":
 
             # Calculate position for live plot (to the right of GUI)
             gui_window.update_idletasks()  # Ensure geometry is updated
-            gui_width = gui_window.winfo_width()
-            plot_position = f"+{gui_width + 10}+0"  # 10px gap, aligned to top
+            # 10px gap, aligned to top
+            plot_position = f"+{gui_window.winfo_width() + 10}+0"
 
             # Create live plot on main thread
             (
@@ -542,14 +550,6 @@ if __name__ == "__main__":
                 line_curr,
                 line_res,
             ) = live_plot_init(sample_id, position=plot_position)
-
-            # Position console window below the live plot
-            # Extract x position from plot_position (format: "+x+0")
-            try:
-                x_pos = int(plot_position.split("+")[1])
-                position_console_window(x_pos, 520, 800, 300)
-            except (ValueError, IndexError):
-                pass  # Ignore if position string parsing fails
 
             # Refocus GUI window after plot creation so keyboard shortcuts work
             gui_window.focus_force()
@@ -592,7 +592,10 @@ if __name__ == "__main__":
 
         def check_experiment_start():
             """Monitor for experiment start trigger from GUI."""
-            if control_vars["experiment_running"].get() and output["sample"] is not None:
+            if (
+                control_vars["experiment_running"].get()
+                and output["sample"] is not None
+            ):
                 start_experiment()
             gui_window.after(100, check_experiment_start)
 
@@ -603,7 +606,8 @@ if __name__ == "__main__":
                 gui_window.destroy()
             else:
                 messagebox.showwarning(
-                    "Warning", "Cannot close while experiment is running!")
+                    "Warning", "Cannot close while experiment is running!"
+                )
 
         # Start monitoring for experiment trigger
         gui_window.after(100, check_experiment_start)

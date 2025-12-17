@@ -14,7 +14,7 @@ from tkinter import messagebox, ttk
 
 from tktooltip import ToolTip
 
-from joule_heating.devices import enable_lasers
+from joule_heating.devices import TemperatureSensorError, enable_lasers
 from joule_heating.plotting import close_plot, plot_data, update_live_plot
 
 from .common import (
@@ -128,7 +128,7 @@ def gui_pid(psu=None, ycr=None, optris=None):
                 btn.config(style="LaserOn.TButton")
             else:
                 btn.config(style="TButton")
-        except (OSError, RuntimeError) as e:
+        except TemperatureSensorError as e:
             show_error(f"Failed to toggle lasers: {e}")
 
     # Configure style for laser button

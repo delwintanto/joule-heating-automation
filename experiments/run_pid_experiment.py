@@ -34,6 +34,8 @@ from simple_pid import PID
 import joule_heating.analysis.gradient_analysis as ga
 from joule_heating.data import print_steps, print_summary, save_finalise, save_row, save_start
 from joule_heating.devices import (
+    PSUError,
+    TemperatureSensorError,
     close_all,
     etm_read_voltage,
     etm_set_current,
@@ -604,7 +606,7 @@ if __name__ == "__main__":
         # Initialise communication with IR temperature sensors and power supply
         try:
             psu, ycr_temp_sensor, optris_temp_sensor = init_devices()
-        except RuntimeError as e:
+        except (PSUError, TemperatureSensorError) as e:
             # Device initialization failed - show error dialog
             messagebox.showerror(
                 "Device Connection Error",
@@ -632,6 +634,12 @@ if __name__ == "__main__":
         if output is None:
             close_all(psu, ycr_temp_sensor, optris_temp_sensor)
             raise SystemExit("Program stopped.")
+
+        # Position console window to the right of GUI immediately
+        gui_window.update_idletasks()  # Ensure geometry is updated
+        gui_x = gui_window.winfo_x()
+        gui_width = gui_window.winfo_width()
+        position_console_window(gui_x + gui_width + 10, 520, 800, 300)
 
         # Create GUI callback functions
         update_status, check_skip = create_gui_callbacks_pid(
@@ -672,8 +680,8 @@ if __name__ == "__main__":
 
             # Calculate position for live plot (to the right of GUI)
             gui_window.update_idletasks()  # Ensure geometry is updated
-            gui_width = gui_window.winfo_width()
-            plot_position = f"+{gui_width + 10}+0"  # 10px gap, aligned to top
+            # 10px gap, aligned to top
+            plot_position = f"+{gui_window.winfo_width() + 10}+0"
 
             # Initialise live plot
             (
@@ -685,14 +693,6 @@ if __name__ == "__main__":
                 line_curr,
                 line_res,
             ) = live_plot_init(sample_name, position=plot_position)
-
-            # Position console window below the live plot
-            # Extract x position from plot_position (format: "+x+0")
-            try:
-                x_pos = int(plot_position.split("+")[1])
-                position_console_window(x_pos, 520, 800, 300)
-            except (ValueError, IndexError):
-                pass  # Ignore if position string parsing fails
 
             # Refocus GUI window after plot creation so keyboard shortcuts work
             gui_window.focus_force()

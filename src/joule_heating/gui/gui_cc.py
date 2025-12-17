@@ -14,7 +14,7 @@ from tkinter import messagebox, ttk
 
 from tktooltip import ToolTip
 
-from joule_heating.devices import enable_lasers
+from joule_heating.devices import TemperatureSensorError, enable_lasers
 from joule_heating.plotting import close_plot, plot_data, update_live_plot
 
 from .common import (
@@ -89,7 +89,7 @@ def gui_cc(psu=None, ycr=None, optris=None):
                 btn_toggle.config(style="LaserOn.TButton")
             else:
                 btn_toggle.config(style="TButton")
-        except (OSError, RuntimeError) as e:
+        except TemperatureSensorError as e:
             show_error(f"Failed to toggle lasers: {e}")
 
     # Configure style for laser button
@@ -219,7 +219,8 @@ def gui_cc(psu=None, ycr=None, optris=None):
             total_time = sec_to_hhmmss(sum(output["durations"]))
             if not messagebox.askyesno(
                 "Confirm",
-                f"Approximate length of the experiment: {total_time}\n" "Start experiment?",
+                f"Approximate length of the experiment: {total_time}\n"
+                "Start experiment?",
             ):
                 return
 

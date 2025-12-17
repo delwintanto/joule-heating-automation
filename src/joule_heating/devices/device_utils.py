@@ -31,42 +31,73 @@ Last updated : 16 Dec 2025
 
 from joule_heating.plotting import close_plot
 
-from .power_supply_etm import PSUError, etm_open, etm_set_onoff
-from .temp_sensor_optris import OptrisIRError, optris_open, optris_set_laser
-from .temp_sensor_ycr import YCRIRError, ycr_open, ycr_set_laser
+from .exceptions import PSUError, TemperatureSensorError
+from .power_supply_etm import etm_open, etm_set_onoff
+from .temp_sensor_optris import optris_open, optris_set_laser
+from .temp_sensor_ycr import ycr_open, ycr_set_laser
 
 
 def init_devices():
-    """Initialize PSU and both IR temperature sensors.
+    """Initialize PSU and at least one IR temperature sensor.
 
-    Opens connections to the eTM-5050PC power supply and YCR/Optris
-    temperature sensors using automatic serial port discovery by hardware ID.
-    All device initialization errors are caught and re-raised as SystemExit
-    to halt the program early if hardware is unavailable.
+    Opens connections to the eTM-5050PC power supply (required) and attempts
+    to connect both YCR and Optris temperature sensors. The PSU must connect
+    successfully, but at least ONE temperature sensor must be available.
+    Uses automatic serial port discovery by hardware ID.
 
     Returns:
-        tuple: ``(psu, ycr_sensor, optris_sensor)`` where each is an open device
-            instance ready for use. All will be non-None if initialization succeeds.
+        tuple: ``(psu, ycr_sensor, optris_sensor)`` where:
+            - ``psu`` is always non-None (required)
+            - ``ycr_sensor`` is the YCR sensor instance or None if unavailable
+            - ``optris_sensor`` is the Optris sensor instance or None if unavailable
+            - At least one of the two sensors will be non-None
 
     Raises:
-        SystemExit: If any device fails to initialize. Error message includes
-            the device type and the underlying exception message.
+        PSUError: If PSU fails to initialize.
+        TemperatureSensorError: If BOTH temperature sensors fail to connect.
+            Error message includes details from both sensor failures.
 
     Example:
         ```python
         try:
             psu, ycr_sensor, optris_sensor = init_devices()
-        except SystemExit as e:
-            # Handle early exit if devices unavailable
-            print(e)
+            # At least one sensor is guaranteed to be available
+        except (PSUError, TemperatureSensorError) as e:
+            # Handle device connection failure
+            print(f"Device error: {e}")
         ```
     """
+    # Initialize PSU (required)
+    psu = etm_open()
+
+    # Try to connect both temperature sensors
+    ycr_sensor = None
+    optris_sensor = None
+    errors = []
+
     try:
         ycr_sensor = ycr_open()
+    except TemperatureSensorError as e:
+        errors.append(f"YCR sensor: {e}")
+
+    try:
         optris_sensor = optris_open()
-        psu = etm_open()
-    except (YCRIRError, OptrisIRError, PSUError) as e:
-        raise SystemExit(f"Error initializing devices: {e}") from e
+    except TemperatureSensorError as e:
+        errors.append(f"Optris sensor: {e}")
+
+    # Require at least one sensor to be connected
+    if ycr_sensor is None and optris_sensor is None:
+        error_msg = "Both temperature sensors failed to connect:\n" + \
+            "\n".join(errors)
+        raise TemperatureSensorError(error_msg)
+
+    # Report which sensors connected successfully
+    if ycr_sensor is not None and optris_sensor is not None:
+        print("All devices connected successfully.")
+    elif ycr_sensor is not None:
+        print("PSU and YCR sensor connected. Optris sensor unavailable.")
+    else:
+        print("PSU and Optris sensor connected. YCR sensor unavailable.")
 
     return psu, ycr_sensor, optris_sensor
 
@@ -118,7 +149,7 @@ def shutdown_devices(psu=None, ycr_sensor=None, optris_sensor=None, *, log=True)
     if ycr_sensor is not None:
         try:
             ycr_set_laser(ycr_sensor, on=False)
-        except YCRIRError as e:
+        except TemperatureSensorError as e:
             if log:
                 print(f"[Warning] Error turning off YCR laser: {e}")
 
@@ -126,7 +157,7 @@ def shutdown_devices(psu=None, ycr_sensor=None, optris_sensor=None, *, log=True)
     if optris_sensor is not None:
         try:
             optris_set_laser(optris_sensor, on=False)
-        except OptrisIRError as e:
+        except TemperatureSensorError as e:
             if log:
                 print(f"[Warning] Error turning off Optris laser: {e}")
 
@@ -202,7 +233,7 @@ def enable_lasers(ycr_sensor=None, optris_sensor=None, on=True, *, log=True):
     if ycr_sensor is not None:
         try:
             ycr_set_laser(ycr_sensor, on=on)
-        except YCRIRError as e:
+        except TemperatureSensorError as e:
             if log:
                 status = "ON" if on else "OFF"
                 print(f"[Warning] Error turning {status} YCR laser: {e}")
@@ -211,7 +242,7 @@ def enable_lasers(ycr_sensor=None, optris_sensor=None, on=True, *, log=True):
     if optris_sensor is not None:
         try:
             optris_set_laser(optris_sensor, on=on)
-        except OptrisIRError as e:
+        except TemperatureSensorError as e:
             if log:
                 status = "ON" if on else "OFF"
                 print(f"[Warning] Error turning {status} Optris laser: {e}")

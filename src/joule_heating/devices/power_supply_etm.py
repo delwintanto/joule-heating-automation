@@ -21,25 +21,11 @@ Last updated : 06 Nov 2025
 import minimalmodbus
 
 from .device_registry import DEVICE_HWIDS
+from .exceptions import PSUError
 from .port_detect import find_port_by_hwid
 
 # Constants
 HWID_SUBSTR = DEVICE_HWIDS["PSU"]  # eTM-5050PC PSU hardware ID substring
-
-
-# -------------------- Custom exception --------------------
-
-
-class PSUError(Exception):
-    """Base exception for power supply related errors.
-
-    Args:
-        message (str): Human readable error message.
-    """
-
-    def __init__(self, message):
-        self.message = message
-        super().__init__(self.message)
 
 
 # -------------------- Initialisation --------------------
@@ -58,10 +44,15 @@ def etm_open(port=None, slave_address=1):
         minimalmodbus.Instrument: Configured Modbus RTU instrument instance.
 
     Raises:
-        PSUError: If the device cannot be initialised or opened.
+        PSUError: If the device cannot be found or initialised.
     """
     if port is None:
         port = find_port_by_hwid(HWID_SUBSTR)
+        if port is None:
+            raise PSUError(
+                "Power supply (eTM-5050PC) not detected. "
+                "Ensure it is connected properly and powered on."
+            )
 
     try:
         device = minimalmodbus.Instrument(port, slave_address)
@@ -94,7 +85,8 @@ def etm_set_onoff(power_supply, *, on):
     try:
         power_supply.write_register(0x0001, 1 if on else 0)
     except (OSError, minimalmodbus.ModbusException) as e:
-        raise PSUError(f"Failed to turn PSU {'ON' if on else 'OFF'}: {e}") from e
+        raise PSUError(
+            f"Failed to turn PSU {'ON' if on else 'OFF'}: {e}") from e
 
 
 def etm_set_voltage(power_supply, *, voltage):
