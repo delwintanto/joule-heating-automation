@@ -19,7 +19,7 @@ Main Functions:
     - run_experiment_thread: Orchestrate full experiment workflow
 
 Author       : Delwin Tanto
-Last updated : 16 Dec 2025
+Last updated : 21 Jan 2026
 """
 
 import time
@@ -48,7 +48,12 @@ from joule_heating.gui import (
     gui_cc,
 )
 from joule_heating.gui.common import create_experiment_monitor, create_experiment_starter
-from joule_heating.utils import position_console_window, prevent_sleep
+from joule_heating.utils import (
+    position_console_window,
+    prevent_sleep,
+    alert_step_start,
+    alert_cooldown_end,
+)
 from joule_heating.utils.skip_step import register_sigint_handler, stop_event
 
 # Constants
@@ -171,6 +176,7 @@ def run_djs_cc(
 
     for idx, (i_set, durr) in enumerate(zip(currs, durrs), start=1):
         end_time = time.monotonic() + durr
+        alert_step_start()  # Play alert sound
 
         try:
             etm_set_voltage(power_supply, voltage=v_set)
@@ -282,6 +288,7 @@ def cooldown(
     threshold_detected_time = None
     cool_start = time.monotonic()
     print(f"[{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}] Starting cooldown...")
+    alert_step_start()  # Play alert sound
 
     while True:
         try:
@@ -334,6 +341,7 @@ def cooldown(
         except KeyboardInterrupt:
             stop_event.set()
 
+    alert_cooldown_end()  # Play alert sound
     print(f"[{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}] Cooldown completed!")
     return data
 
@@ -486,7 +494,7 @@ if __name__ == "__main__":
             # Device initialization failed - show error dialog
             messagebox.showerror(
                 "Device Connection Error",
-                f"Failed to initialise devices:\n\n{str(e)}.\n\n" "Press OK to exit.",
+                f"Failed to initialise devices:\n\n{str(e)}.\n\nPress OK to exit.",
             )
             raise SystemExit(
                 f"[{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}] Program stopped."
@@ -512,8 +520,7 @@ if __name__ == "__main__":
 
         # Create GUI callback functions
         update_status, check_skip = create_gui_callbacks_cc(
-            gui_window, status_vars, control_vars
-        )
+            gui_window, status_vars, control_vars)
 
         # Flag to prevent multiple simultaneous runs
         experiment_started = [False]
@@ -524,12 +531,7 @@ if __name__ == "__main__":
         )
 
         def get_cc_experiment_args(
-            exp_output,
-            exp_devices,
-            exp_callbacks,
-            exp_figure,
-            exp_axes,
-            exp_lines
+            exp_output, exp_devices, exp_callbacks, exp_figure, exp_axes, exp_lines
         ):
             """Extract and organize arguments for CC experiment thread."""
             power_supply, ycr_sensor, optris_sensor = exp_devices
@@ -594,8 +596,7 @@ if __name__ == "__main__":
                 gui_window.destroy()
             else:
                 messagebox.showwarning(
-                    "Warning", "Cannot close while experiment is running!"
-                )
+                    "Warning", "Cannot close while experiment is running!")
 
         # Start monitoring for experiment trigger
         gui_window.after(100, check_experiment_start)

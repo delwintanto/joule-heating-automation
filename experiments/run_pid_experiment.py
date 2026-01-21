@@ -19,7 +19,7 @@ Main Functions:
     - run_experiment_thread: Orchestrate full experiment workflow
 
 Author       : Delwin Tanto
-Last updated : 16 Dec 2025
+Last updated : 21 Jan 2026
 """
 
 import time
@@ -50,7 +50,12 @@ from joule_heating.gui import (
     gui_pid,
 )
 from joule_heating.gui.common import create_experiment_monitor, create_experiment_starter
-from joule_heating.utils import position_console_window, prevent_sleep
+from joule_heating.utils import (
+    position_console_window,
+    prevent_sleep,
+    alert_step_start,
+    alert_cooldown_end,
+)
 from joule_heating.utils.skip_step import register_sigint_handler, stop_event
 
 # Constants
@@ -376,6 +381,7 @@ def run_djs_pid(
             f"[{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}] "
             f"Starting heating step {idx}/{total_steps}."
         )
+        alert_step_start()  # Play alert sound
         pid.setpoint = setpoint
         time_now = time.monotonic()
         end_time = time_now + duration
@@ -449,6 +455,7 @@ def run_djs_pid(
             f"[{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}] "
             f"Starting cooldown phase for {cooldown_dur} s..."
         )
+        alert_step_start()  # Play alert sound
         end_time_cooldown = time.monotonic() + cooldown_dur
         while time.monotonic() <= end_time_cooldown:
             # Check for skip request
@@ -494,6 +501,7 @@ def run_djs_pid(
 
             time.sleep(LOOP_INTERVAL)
 
+        alert_cooldown_end()  # Play alert sound
         print(f"[{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}] Cooldown completed!")
     return kp, ki, kd
 
