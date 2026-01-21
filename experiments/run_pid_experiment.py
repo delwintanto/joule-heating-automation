@@ -22,7 +22,6 @@ Author       : Delwin Tanto
 Last updated : 16 Dec 2025
 """
 
-import threading
 import time
 from collections import deque
 from datetime import datetime
@@ -50,7 +49,7 @@ from joule_heating.gui import (
     create_plot_callbacks_pid,
     gui_pid,
 )
-from joule_heating.plotting import live_plot_init
+from joule_heating.gui.common import create_experiment_monitor, create_experiment_starter
 from joule_heating.utils import position_console_window, prevent_sleep
 from joule_heating.utils.skip_step import register_sigint_handler, stop_event
 
@@ -100,9 +99,10 @@ def auto_tune_pid(
         update_plot_callback (callable, optional): Function to update live plot.
 
     Returns:
-        tuple: ``(kp, ki, kd, lp_time, lp_temp, lp_curr, lp_res, time_start)``
-            where ``kp/ki/kd`` are computed PID gains (or None if tuning fails),
-            and the other values are updated buffers and the observed start time.
+        tuple: ``(kp, ki, kd, lp_time, lp_temp, lp_curr, lp_res, time_start, max_temperature,
+            tuning_csv_path)`` where ``kp/ki/kd`` are computed PID gains (or None if tuning fails),
+            the other values are updated buffers, the observed start time, max temperature,
+            and tuning_csv_path is the path to the saved tuning CSV file with PID gains added.
 
     Note:
         If tuning is interrupted (via skip or SIGINT) or if oscillations cannot
@@ -120,6 +120,7 @@ def auto_tune_pid(
     # Step 1: Apply an alternating current and records the temperature oscillations
     switch_interval = 5  # Seconds to switch between high and low current
     time_start = time.monotonic()
+    max_temperature = 0.0  # Track maximum temperature reached
 
     etm_set_voltage(power_supply, voltage=v_set)
     etm_set_onoff(power_supply, on=True)
@@ -141,11 +142,12 @@ def auto_tune_pid(
         v_read = etm_read_voltage(power_supply)
         r_read = v_read / i_read if i_read != 0 else float("inf")
 
+        # Track maximum temperature
+        max_temperature = max(max_temperature, t_read)
+
         if t_read > MAX_TEMP:
             print(
-                "\033[1;31mTemperature exceeded safe limit! "
-                "Stopping auto-tuning...\033[0m"
-            )
+                "\033[1;31mTemperature exceeded safe limit! Stopping auto-tuning...\033[0m")
             break
 
         # Update GUI status
@@ -153,6 +155,7 @@ def auto_tune_pid(
             status_callback(
                 phase="Auto-Tuning",
                 temperature=f"{t_read:.1f}°C",
+                max_temperature=f"{max_temperature:.1f}°C",
                 setpoint="-",
                 current=f"{i_read:.2f} A",
                 voltage=f"{v_read:.2f} V",
@@ -219,7 +222,18 @@ def auto_tune_pid(
             )
             messagebox.showerror("Auto-Tuning Failed", msg)
             raise SystemExit(msg)
-    return kp, ki, kd, lp_time, lp_temp, lp_curr, lp_res, time_start
+    return (
+        kp,
+        ki,
+        kd,
+        lp_time,
+        lp_temp,
+        lp_curr,
+        lp_res,
+        time_start,
+        max_temperature,
+        tuning_csv_path,
+    )
 
 
 def run_djs_pid(
@@ -275,6 +289,7 @@ def run_djs_pid(
 
     # Initialize time_start (will be set by auto_tune_pid or manual timing)
     time_start = None
+    max_temperature = 0.0  # Track maximum temperature reached
 
     # Run PID gains tuning
     if tuning == "Auto tuning":
@@ -287,6 +302,8 @@ def run_djs_pid(
             lp_dataset["current"],
             lp_dataset["resistance"],
             time_start,
+            max_temperature,
+            tuning_csv_path,
         ) = auto_tune_pid(
             sample_name,
             ycr_sensor,
@@ -304,6 +321,20 @@ def run_djs_pid(
             update_plot_callback,
         )
 
+        # Add PID gains to the tuning CSV file as header comments
+        try:
+            with open(tuning_csv_path, encoding="utf-8-sig") as f:
+                lines = f.readlines()
+            with open(tuning_csv_path, "w", encoding="utf-8-sig") as f:
+                f.write("PID Gains from Auto-Tuning,,,\n")
+                f.write(f"Kp,{kp:.6f},,,\n")
+                f.write(f"Ki,{ki:.6f},,,\n")
+                f.write(f"Kd,{kd:.6f},,,\n")
+                f.write(",,,\n")
+                f.writelines(lines)
+        except OSError as e:
+            print(f"Warning: Could not add PID gains to tuning CSV: {e}")
+
         if messagebox.askyesno(
             "Auto-Tuning Completed",
             f"[{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}] "
@@ -316,6 +347,7 @@ def run_djs_pid(
             messagebox.showinfo(
                 "Information", "Please put in your new sample and press OK to continue."
             )
+            max_temperature = 0.0  # Reset max temperature for heating phase
 
     print(
         f"[{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}] "
@@ -335,10 +367,15 @@ def run_djs_pid(
     # Set the starting time for the live plot (or use time from auto-tuning)
     if time_start is None:
         time_start = time.monotonic()
+        max_temperature = 0.0  # Reset max_temperature for fresh experiment if no auto-tuning
     skip_count = deque(maxlen=3)  # Count how many times user pressed CTRL + C
     total_steps = len(temp_sp)
 
     for idx, (setpoint, duration) in enumerate(zip(temp_sp, durr_sp), start=1):
+        print(
+            f"[{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}] "
+            f"Starting heating step {idx}/{total_steps}."
+        )
         pid.setpoint = setpoint
         time_now = time.monotonic()
         end_time = time_now + duration
@@ -347,8 +384,7 @@ def run_djs_pid(
             # Check for skip request
             if skip_check_callback and skip_check_callback():
                 print(
-                    f"[{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}]"
-                    f"Step {idx} skipped by user."
+                    f"[{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}] Step {idx} skipped by user."
                 )
                 break
 
@@ -358,6 +394,9 @@ def run_djs_pid(
                 break
 
             t_read = read_temperature(ycr_sensor, optris_sensor)
+
+            # Track maximum temperature
+            max_temperature = max(max_temperature, t_read)
 
             # Set current based on PID output
             curr = 0 if t_read >= MAX_TEMP else pid(t_read)
@@ -377,7 +416,8 @@ def run_djs_pid(
             if status_callback:
                 status_callback(
                     phase=f" Heating - Step {idx}/{total_steps}",
-                    temperature=f"{t_read:.1f}°C",
+                    temperature=f"{t_read:.1f} °C",
+                    max_temperature=f"{max_temperature:.1f} °C",
                     setpoint=f"{setpoint}°C",
                     current=f"{curr:.2f} A",
                     voltage=f"{v_read:.2f} V",
@@ -435,7 +475,8 @@ def run_djs_pid(
             if status_callback:
                 status_callback(
                     phase="Cooldown",
-                    temperature=f"{t_read:.1f}°C",
+                    temperature=f"{t_read:.1f} °C",
+                    max_temperature=f"{max_temperature:.1f} °C",
                     setpoint="-",
                     current=f"{i_read:.2f} A",
                     voltage=f"{v_read:.2f} V",
@@ -610,7 +651,7 @@ if __name__ == "__main__":
             # Device initialization failed - show error dialog
             messagebox.showerror(
                 "Device Connection Error",
-                f"Failed to initialise devices:\n\n{str(e)}.\n\n" "Press OK to exit.",
+                f"Failed to initialise devices:\n\n{str(e)}.\n\nPress OK to exit.",
             )
             raise SystemExit(
                 f"[{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}] Program stopped."
@@ -653,99 +694,66 @@ if __name__ == "__main__":
             gui_window, status_vars, control_vars, experiment_started, field_widgets
         )
 
-        def start_experiment():
-            """Start experiment in background thread when GUI triggers it."""
-            if not control_vars["experiment_running"].get():
-                return
-
-            # Prevent starting multiple experiments
-            if experiment_started[0]:
-                return
-            experiment_started[0] = True
-
-            # Enable skip button
-            control_vars["skip_button"].config(state="normal")
-
-            # Get experiment parameters
-            sample_name = output["sample"]
-            temps = output["temps"]
-            durs = output["durs"]
-            current = output["current"]
-            voltage = output["voltage"]
-            cooldown = output["cooldown"]
-            kp = output.get("kp", 0.5)
-            ki = output.get("ki", 0.1)
-            kd = output.get("kd", 0.1)
-            tuning_time = output.get("tuning_time", 0)
-
-            # Calculate position for live plot (to the right of GUI)
-            gui_window.update_idletasks()  # Ensure geometry is updated
-            # 10px gap, aligned to top
-            plot_position = f"+{gui_window.winfo_width() + 10}+0"
-
-            # Initialise live plot
+        def get_pid_experiment_args(
+            exp_output, exp_devices, exp_callbacks, exp_figure, exp_axes, exp_lines
+        ):
+            """Extract and organize arguments for PID experiment thread."""
+            power_supply, ycr_sensor, optris_sensor = exp_devices
             (
-                figure,
-                ax_temp,
-                ax_curr,
-                ax_res,
-                line_temp,
-                line_curr,
-                line_res,
-            ) = live_plot_init(sample_name, position=plot_position)
+                cb_status,
+                cb_skip,
+                cb_complete,
+                cb_plot_update,
+                cb_plot_final,
+                cb_plot_close,
+            ) = exp_callbacks
 
-            # Refocus GUI window after plot creation so keyboard shortcuts work
-            gui_window.focus_force()
-
-            # Create plot callbacks with access to live plot context
-            (
-                update_plot,
-                show_final_plot,
-                close_live_plot,
-            ) = create_plot_callbacks_pid(gui_window, plot_position)
-
-            # Start experiment in background thread
-            experiment_thread = threading.Thread(
-                target=run_experiment_thread,
-                args=(
-                    psu,
-                    ycr_temp_sensor,
-                    optris_temp_sensor,
-                    sample_name,
-                    temps,
-                    durs,
-                    current,
-                    voltage,
-                    cooldown,
-                    kp,
-                    ki,
-                    kd,
-                    tuning_time,
-                    tuning_mode,
-                    experiment_started,
-                    update_status,
-                    check_skip,
-                    on_experiment_complete,
-                    figure,
-                    (ax_temp, ax_curr, ax_res),
-                    (line_temp, line_curr, line_res),
-                    update_plot,
-                    show_final_plot,
-                    close_live_plot,
-                ),
-                daemon=True,
+            return (
+                power_supply,
+                ycr_sensor,
+                optris_sensor,
+                exp_output["sample"],
+                exp_output["temps"],
+                exp_output["durs"],
+                exp_output["current"],
+                exp_output["voltage"],
+                exp_output["cooldown"],
+                exp_output.get("kp", 0.5),
+                exp_output.get("ki", 0.1),
+                exp_output.get("kd", 0.1),
+                exp_output.get("tuning_time", 0),
+                exp_output.get("tuning_method", "Manual tuning"),
+                experiment_started,
+                cb_status,
+                cb_skip,
+                cb_complete,
+                exp_figure,
+                exp_axes,
+                exp_lines,
+                cb_plot_update,
+                cb_plot_final,
+                cb_plot_close,
             )
-            experiment_thread.start()
 
-        def check_experiment_start():
-            """Check if experiment should start and launch it."""
-            if (
-                control_vars["experiment_running"].get()
-                and output["sample"] is not None
-                and not experiment_started[0]
-            ):
-                start_experiment()
-            gui_window.after(100, check_experiment_start)
+        # Create start_experiment function using common factory
+        start_experiment = create_experiment_starter(
+            gui_window,
+            control_vars,
+            experiment_started,
+            (psu, ycr_temp_sensor, optris_temp_sensor),
+            output,
+            update_status,
+            check_skip,
+            on_experiment_complete,
+            create_plot_callbacks_pid,
+            run_experiment_thread,
+            get_pid_experiment_args,
+        )
+
+        # Create experiment monitor using common factory
+        check_experiment_start = create_experiment_monitor(
+            gui_window, control_vars, output, start_experiment, experiment_started
+        )
 
         def on_close():
             """Handle window close event."""

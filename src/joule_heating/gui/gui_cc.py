@@ -14,13 +14,14 @@ from tkinter import messagebox, ttk
 
 from tktooltip import ToolTip
 
-from joule_heating.devices import TemperatureSensorError, enable_lasers
 from joule_heating.plotting import close_plot, plot_data, update_live_plot
 
 from .common import (
     LabeledEntry,
     RowCounter,
     check_empty_fields,
+    configure_laser_button_style,
+    create_laser_toggle_callback,
     load_settings,
     parse_floats,
     save_settings,
@@ -73,32 +74,12 @@ def gui_cc(psu=None, ycr=None, optris=None):
         row=laser_row, column=0, sticky=tk.W, padx=5, pady=(0, 10)
     )
 
-    def toggle_lasers():
-        """Toggle lasers on/off for sample alignment."""
-        if not devices["ycr"] and not devices["optris"]:
-            show_error(
-                "Temperature sensors not initialized. Cannot toggle lasers.")
-            return
-        try:
-            lasers_on[0] = not lasers_on[0]
-            enable_lasers(
-                ycr_sensor=devices["ycr"], optris_sensor=devices["optris"], on=lasers_on[0]
-            )
-            # Update button appearance based on laser state
-            if lasers_on[0]:
-                btn_toggle.config(style="LaserOn.TButton")
-            else:
-                btn_toggle.config(style="TButton")
-        except TemperatureSensorError as e:
-            show_error(f"Failed to toggle lasers: {e}")
-
     # Configure style for laser button
-    style = ttk.Style()
-    style.configure("LaserOn.TButton", background="#FF0000",
-                    foreground="black")
+    configure_laser_button_style()
 
-    btn_toggle = ttk.Button(
-        gui_window, text="Toggle Lasers ON/OFF", command=toggle_lasers)
+    btn_toggle = ttk.Button(gui_window, text="Toggle Lasers ON/OFF")
+    btn_toggle.config(command=create_laser_toggle_callback(
+        devices, lasers_on, btn_toggle))
     btn_toggle.grid(row=laser_row, column=1, columnspan=2,
                     sticky=tk.EW, padx=5, pady=(0, 10))
     ToolTip(
@@ -146,6 +127,7 @@ def gui_cc(psu=None, ycr=None, optris=None):
     status_vars = {
         "phase": tk.StringVar(value="Ready"),
         "temperature": tk.StringVar(value="--"),
+        "max_temperature": tk.StringVar(value="--"),
         "current": tk.StringVar(value="--"),
         "voltage": tk.StringVar(value="--"),
         "resistance": tk.StringVar(value="--"),
@@ -156,6 +138,7 @@ def gui_cc(psu=None, ycr=None, optris=None):
     status_labels = [
         ("Phase:", status_vars["phase"]),
         ("Temperature:", status_vars["temperature"]),
+        ("Max Temperature:", status_vars["max_temperature"]),
         ("Current:", status_vars["current"]),
         ("Voltage:", status_vars["voltage"]),
         ("Resistance:", status_vars["resistance"]),
@@ -234,7 +217,7 @@ def gui_cc(psu=None, ycr=None, optris=None):
             # Disable all buttons except skip
             for widget in gui_window.winfo_children():
                 if isinstance(widget, ttk.Button):
-                    if widget.cget("text") == "Skip Current Step":
+                    if widget.cget("text") == "Skip Current Step (F5)":
                         widget.config(state="normal")
                     else:
                         widget.config(state="disabled")
@@ -352,12 +335,15 @@ def create_gui_callbacks_cc(gui_window, status_vars, control_vars):
         tuple: (update_status, check_skip) callback functions.
     """
 
-    def update_status(phase, temperature, current, voltage, resistance, time_remaining):
+    def update_status(
+        phase, temperature, max_temperature, current, voltage, resistance, time_remaining
+    ):
         """Update GUI status display from experiment thread.
 
         Args:
             phase (str): Current experiment phase (e.g., "Heating - Step 1/3").
             temperature (str): Temperature reading with units.
+            max_temperature (str): Maximum temperature reached so far.
             current (str): Current reading with units.
             voltage (str): Voltage reading with units.
             resistance (str): Resistance reading with units.
@@ -369,6 +355,8 @@ def create_gui_callbacks_cc(gui_window, status_vars, control_vars):
         gui_window.after(0, lambda: status_vars["phase"].set(phase))
         gui_window.after(
             0, lambda: status_vars["temperature"].set(temperature))
+        gui_window.after(
+            0, lambda: status_vars["max_temperature"].set(max_temperature))
         gui_window.after(0, lambda: status_vars["current"].set(current))
         gui_window.after(0, lambda: status_vars["voltage"].set(voltage))
         gui_window.after(0, lambda: status_vars["resistance"].set(resistance))
@@ -427,6 +415,7 @@ def create_experiment_complete_callback_cc(
             # Reset status displays
             status_vars["phase"].set("Ready")
             status_vars["temperature"].set("--")
+            status_vars["max_temperature"].set("--")
             status_vars["current"].set("--")
             status_vars["voltage"].set("--")
             status_vars["resistance"].set("--")
