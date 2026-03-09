@@ -285,21 +285,26 @@ def gui_cc(psu=None, ycr=None, optris=None):
 
     # -------------------- Keyboard Shortcuts --------------------
 
-    gui_window.bind("<F2>", lambda e: start())
-    gui_window.bind(
-        "<F5>",
-        lambda e: control_vars["skip_step"].set(True),
-    )
-    gui_window.bind(
-        "<Control-s>",
-        lambda e: save_settings(
-            {label: entries[label].get() for label in fields}),
-    )
-    gui_window.bind(
-        "<Control-l>",
-        lambda e: load_settings(
-            {label: entries[label].var for label in fields}),
-    )
+    def _kb_start(_):
+        if not control_vars["experiment_running"].get():
+            start()
+
+    def _kb_skip(_):
+        if control_vars["experiment_running"].get():
+            control_vars["skip_step"].set(True)
+
+    def _kb_save(_):
+        if not control_vars["experiment_running"].get():
+            save_settings({label: entries[label].get() for label in fields})
+
+    def _kb_load(_):
+        if not control_vars["experiment_running"].get():
+            load_settings({label: entries[label].var for label in fields})
+
+    gui_window.bind("<F2>", _kb_start)
+    gui_window.bind("<F5>", _kb_skip)
+    gui_window.bind("<Control-s>", _kb_save)
+    gui_window.bind("<Control-l>", _kb_load)
 
     # -------------------- Window Close Handler --------------------
 

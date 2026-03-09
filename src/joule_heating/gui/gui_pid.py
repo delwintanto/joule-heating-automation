@@ -122,7 +122,6 @@ def gui_pid(psu=None, ycr=None, optris=None):
         row=laser_row, column=0, sticky=tk.W, padx=5, pady=(0, 10)
     )
 
-
     btn = ttk.Button(container, text="Toggle Lasers ON/OFF")
     btn.config(command=create_laser_toggle_callback(devices, lasers_on, btn))
     btn.grid(row=laser_row, column=1, columnspan=2,
@@ -533,25 +532,35 @@ def gui_pid(psu=None, ycr=None, optris=None):
 
     # -------------------- Keyboard Shortcuts --------------------
 
-    gui_window.bind("<F2>", lambda e: start())
-    gui_window.bind(
-        "<F5>",
-        lambda e: control_vars["skip_step"].set(True),
-    )
-    gui_window.bind(
-        "<Control-s>",
-        lambda e: save_settings(
-            {
-                **{k: v[0].get() for k, v in common_fields.items()},
-                "Input Mode": input_mode.get(),
-                "Tuning Mode": "Manual" if tuning_mode.get() else "Auto",
-                **{k: v[0].get() for k, v in discrete_fields.items()},
-                **{k: v[0].get() for k, v in continuous_fields.items()},
-                **{k: v[0].get() for k, v in pid_vars.items()},
-            }
-        ),
-    )
-    gui_window.bind("<Control-l>", lambda e: load_and_refresh())
+    def _kb_start(_):
+        if not control_vars["experiment_running"].get():
+            start()
+
+    def _kb_skip(_):
+        if control_vars["experiment_running"].get():
+            control_vars["skip_step"].set(True)
+
+    def _kb_save(_):
+        if not control_vars["experiment_running"].get():
+            save_settings(
+                {
+                    **{k: v[0].get() for k, v in common_fields.items()},
+                    "Input Mode": input_mode.get(),
+                    "Tuning Mode": "Manual" if tuning_mode.get() else "Auto",
+                    **{k: v[0].get() for k, v in discrete_fields.items()},
+                    **{k: v[0].get() for k, v in continuous_fields.items()},
+                    **{k: v[0].get() for k, v in pid_vars.items()},
+                }
+            )
+
+    def _kb_load(_):
+        if not control_vars["experiment_running"].get():
+            load_and_refresh()
+
+    gui_window.bind("<F2>", _kb_start)
+    gui_window.bind("<F5>", _kb_skip)
+    gui_window.bind("<Control-s>", _kb_save)
+    gui_window.bind("<Control-l>", _kb_load)
 
     # -------------------- Window Close Handler --------------------
 
