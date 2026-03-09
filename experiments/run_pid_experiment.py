@@ -767,8 +767,10 @@ if __name__ == "__main__":
         def on_close():
             """Handle window close event."""
             if not control_vars["experiment_running"].get():
-                close_all(psu, ycr_temp_sensor, optris_temp_sensor)
-                gui_window.destroy()
+                try:
+                    close_all(psu, ycr_temp_sensor, optris_temp_sensor)
+                finally:
+                    gui_window.destroy()
             else:
                 messagebox.showwarning(
                     "Warning", "Cannot close while experiment is running!")
