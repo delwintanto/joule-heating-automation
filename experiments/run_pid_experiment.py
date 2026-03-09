@@ -51,10 +51,10 @@ from joule_heating.gui import (
 )
 from joule_heating.gui.common import create_experiment_monitor, create_experiment_starter
 from joule_heating.utils import (
+    alert_cooldown_end,
+    alert_step_start,
     position_console_window,
     prevent_sleep,
-    alert_step_start,
-    alert_cooldown_end,
 )
 from joule_heating.utils.skip_step import register_sigint_handler, stop_event
 
@@ -390,7 +390,8 @@ def run_djs_pid(
             # Check for skip request
             if skip_check_callback and skip_check_callback():
                 print(
-                    f"[{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}] Step {idx} skipped by user."
+                    f"[{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}] "
+                    f"Step {idx} skipped by user."
                 )
                 break
 

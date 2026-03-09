@@ -160,6 +160,8 @@ def gui_cc(psu=None, ycr=None, optris=None):
         "experiment_running": tk.BooleanVar(value=False),
         "skip_button": None,  # Will be set when button is created
         "entries": entries,  # Store references to all entry widgets
+        "lasers_on": lasers_on,  # Store laser state for completion callback
+        "laser_button": btn_toggle,  # Store laser button reference for completion callback
     }
 
     # Dictionary to store output values
@@ -411,6 +413,10 @@ def create_experiment_complete_callback_cc(
                         widget.config(state="normal")
                     else:
                         widget.config(state="disabled")
+
+            # Reset laser state and button appearance
+            control_vars["lasers_on"][0] = False
+            control_vars["laser_button"].config(style="TButton")
 
             # Reset status displays
             status_vars["phase"].set("Ready")

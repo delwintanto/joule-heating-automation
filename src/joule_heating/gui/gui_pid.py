@@ -96,6 +96,12 @@ def gui_pid(psu=None, ycr=None, optris=None):
     devices = {"psu": psu, "ycr": ycr, "optris": optris}
     lasers_on = [False]  # Mutable container to track laser state
 
+    # Configure style for laser button
+    configure_laser_button_style()
+
+    # Laser test controls will be created later in the button section
+    # We'll store the button reference in control_vars so it can be reset
+
     create_radio_button(
         container,
         "Temperature Input Mode:",
@@ -116,8 +122,6 @@ def gui_pid(psu=None, ycr=None, optris=None):
         row=laser_row, column=0, sticky=tk.W, padx=5, pady=(0, 10)
     )
 
-    # Configure style for laser button
-    configure_laser_button_style()
 
     btn = ttk.Button(container, text="Toggle Lasers ON/OFF")
     btn.config(command=create_laser_toggle_callback(devices, lasers_on, btn))
@@ -328,6 +332,8 @@ def gui_pid(psu=None, ycr=None, optris=None):
         "load_button": None,  # Will be set when button is created
         "field_widgets": field_widgets,  # Store references to all field widgets
         "container": container,  # Store container reference for finding radio buttons
+        "lasers_on": lasers_on,  # Store laser state for completion callback
+        "laser_button": btn,  # Store laser button reference for completion callback
     }
 
     # Dictionary to store the output values
@@ -677,6 +683,10 @@ def create_experiment_complete_callback_pid(
             control_vars["save_button"].config(state="normal")
             control_vars["load_button"].config(state="normal")
             control_vars["skip_button"].config(state="disabled")
+
+            # Reset laser state and button appearance
+            control_vars["lasers_on"][0] = False
+            control_vars["laser_button"].config(style="TButton")
 
             # Reset status displays
             status_vars["phase"].set("Ready")
