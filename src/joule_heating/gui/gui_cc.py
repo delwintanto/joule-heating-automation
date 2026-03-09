@@ -4,7 +4,7 @@ This module provides the GUI for constant-current Joule heating experiments
 and the callback functions for integrating with the experiment thread.
 
 Author       : Delwin Tanto
-Last updated : 10 Dec 2025
+Last updated : 09 Mar 2026
 """
 
 import os
@@ -285,12 +285,21 @@ def gui_cc(psu=None, ycr=None, optris=None):
     )
     control_vars["skip_button"] = btn_skip  # Store reference
 
+    def request_stop():
+        """Request full experiment stop and log to terminal once."""
+        if not control_vars["stop_requested"].get():
+            print(
+                f"[{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}] "
+                "Experiment stopped by user."
+            )
+        control_vars["stop_requested"].set(True)
+
     # Stop button
     button_row = row.next()
     btn_stop = ttk.Button(
         gui_window,
         text="Stop Experiment (F6)",
-        command=lambda: control_vars["stop_requested"].set(True),
+        command=request_stop,
         state="disabled",
     )
     btn_stop.grid(row=button_row, column=0, columnspan=3,
@@ -310,7 +319,7 @@ def gui_cc(psu=None, ycr=None, optris=None):
 
     def _kb_stop(_):
         if control_vars["experiment_running"].get():
-            control_vars["stop_requested"].set(True)
+            request_stop()
 
     def _kb_save(_):
         if not control_vars["experiment_running"].get():
