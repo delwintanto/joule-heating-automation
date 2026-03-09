@@ -447,6 +447,10 @@ def run_djs_pid(
         if len(skip_count) == 3 and (skip_count[-1] - skip_count[0] <= 5):
             break  # Exit heating loop entirely if CTRL+C is pressed 3x within 5 s
 
+        # Full stop requested - exit all remaining heating steps
+        if skip_check_callback and skip_check_callback():
+            break
+
     print(f"[{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}] Heating completed!")
 
     etm_set_onoff(power_supply, on=False)

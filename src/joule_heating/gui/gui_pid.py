@@ -323,9 +323,11 @@ def gui_pid(psu=None, ycr=None, optris=None):
     # -------------------- Control Variables --------------------
 
     control_vars = {
-        "skip_step": tk.BooleanVar(value=False),
+        "skip_requested": tk.BooleanVar(value=False),
+        "stop_requested": tk.BooleanVar(value=False),
         "experiment_running": tk.BooleanVar(value=False),
         "skip_button": None,  # Will be set when button is created
+        "stop_button": None,  # Will be set when button is created
         "start_button": None,  # Will be set when button is created
         "save_button": None,  # Will be set when button is created
         "load_button": None,  # Will be set when button is created
@@ -456,11 +458,12 @@ def gui_pid(psu=None, ycr=None, optris=None):
                 if isinstance(child, ttk.Radiobutton):
                     child.config(state="disabled")
 
-            # Disable all buttons except skip
+            # Disable all buttons except skip and stop
             control_vars["start_button"].config(state="disabled")
             control_vars["save_button"].config(state="disabled")
             control_vars["load_button"].config(state="disabled")
             control_vars["skip_button"].config(state="normal")
+            control_vars["stop_button"].config(state="normal")
 
             # Update status
             status_vars["phase"].set("Initializing...")
@@ -518,7 +521,7 @@ def gui_pid(psu=None, ycr=None, optris=None):
     btn_skip = ttk.Button(
         container,
         text="Skip Current Step (F5)",
-        command=lambda: control_vars["skip_step"].set(True),
+        command=lambda: control_vars["skip_requested"].set(True),
         state="disabled",
     )
     btn_skip.grid(row=button_row, column=0, columnspan=3,
@@ -530,6 +533,19 @@ def gui_pid(psu=None, ycr=None, optris=None):
     )
     control_vars["skip_button"] = btn_skip  # Store reference
 
+    # Stop button
+    button_row += 1
+    btn_stop = ttk.Button(
+        container,
+        text="Stop Experiment (F6)",
+        command=lambda: control_vars["stop_requested"].set(True),
+        state="disabled",
+    )
+    btn_stop.grid(row=button_row, column=0, columnspan=3,
+                  sticky=tk.EW, padx=10, pady=2)
+    ToolTip(btn_stop, msg="Stop the experiment immediately.", delay=0.3)
+    control_vars["stop_button"] = btn_stop  # Store reference
+
     # -------------------- Keyboard Shortcuts --------------------
 
     def _kb_start(_):
@@ -538,7 +554,11 @@ def gui_pid(psu=None, ycr=None, optris=None):
 
     def _kb_skip(_):
         if control_vars["experiment_running"].get():
-            control_vars["skip_step"].set(True)
+            control_vars["skip_requested"].set(True)
+
+    def _kb_stop(_):
+        if control_vars["experiment_running"].get():
+            control_vars["stop_requested"].set(True)
 
     def _kb_save(_):
         if not control_vars["experiment_running"].get():
@@ -559,6 +579,7 @@ def gui_pid(psu=None, ycr=None, optris=None):
 
     gui_window.bind("<F2>", _kb_start)
     gui_window.bind("<F5>", _kb_skip)
+    gui_window.bind("<F6>", _kb_stop)
     gui_window.bind("<Control-s>", _kb_save)
     gui_window.bind("<Control-l>", _kb_load)
 
@@ -641,13 +662,15 @@ def create_gui_callbacks_pid(gui_window, status_vars, control_vars):
             0, lambda: status_vars["time_remaining"].set(time_remaining))
 
     def check_skip():
-        """Check if skip button was pressed in the GUI.
+        """Check if skip or stop was requested in the GUI.
 
         Returns:
-            bool: True if skip was requested, False otherwise.
+            bool: True if skip or stop was requested, False otherwise.
         """
-        if control_vars["skip_step"].get():
-            control_vars["skip_step"].set(False)
+        if control_vars["stop_requested"].get():
+            return True  # Don't clear - persists to stop all remaining steps
+        if control_vars["skip_requested"].get():
+            control_vars["skip_requested"].set(False)
             return True
         return False
 
@@ -687,13 +710,15 @@ def create_experiment_complete_callback_pid(
                 if isinstance(child, ttk.Radiobutton):
                     child.config(state="normal")
 
-            # Re-enable all buttons except skip
+            # Re-enable all buttons except skip and stop
             control_vars["start_button"].config(state="normal")
             control_vars["save_button"].config(state="normal")
             control_vars["load_button"].config(state="normal")
             control_vars["skip_button"].config(state="disabled")
+            control_vars["stop_button"].config(state="disabled")
 
-            # Reset laser state and button appearance
+            # Reset stop and laser state
+            control_vars["stop_requested"].set(False)
             control_vars["lasers_on"][0] = False
             control_vars["laser_button"].config(style="TButton")
 

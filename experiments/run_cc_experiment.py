@@ -244,6 +244,10 @@ def run_djs_cc(
             update_plot_callback(fig, (ax1, ax2, ax3),
                                  (line1, line2, line3), data)
 
+        # Full stop requested - exit all remaining heating steps
+        if skip_check_callback and skip_check_callback():
+            break
+
     print(f"[{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}] Heating completed!")
     return time_start, data
 
