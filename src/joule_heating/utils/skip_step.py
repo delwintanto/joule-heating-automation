@@ -1,135 +1,101 @@
 """Centralized signal handling for Joule Heating experiments.
 
 This module provides utilities to manage SIGINT (Ctrl+C) interrupts across
-multiple scripts using a shared threading.Event. Instead of each script
-managing its own signal handler, use the context manager or register
-the handler directly from `__main__`.
+multiple scripts using a threading.Event. Instead of each script managing
+its own signal handler, use the context manager which creates and yields
+a fresh Event per invocation.
 
 Key features:
-- Module-level `stop_event` shared across all scripts using this module.
+- Context manager that creates +  yields a per-run ``stop_event``.
 - SIGINT handler that sets the event, allowing loops to check and respond.
-- Context manager for automatic registration and restoration of handlers.
+- Automatic registration and restoration of signal handlers.
 - Supports custom handlers for flexibility.
 
 Usage:
 =====
 1. **Using the context manager** (recommended):
     ```python
-    from joule_heating.utils import register_sigint_handler, stop_event
+    from joule_heating.utils.skip_step import register_sigint_handler
 
     if __name__ == "__main__":
-        with register_sigint_handler():
-            run_experiment()
+        with register_sigint_handler() as stop_event:
+            run_experiment(stop_event=stop_event)
     ```
 
 2. **Manual registration** (for scripts that need more control):
     ```python
-    from joule_heating.utils import register_sigint_handler_manual, stop_event
+    from joule_heating.utils.skip_step import register_sigint_handler_manual
+    from threading import Event
     import signal
 
     if __name__ == "__main__":
-        register_sigint_handler_manual()
+        stop_event = Event()
+        old = register_sigint_handler_manual(stop_event)
         try:
-            run_experiment()
+            run_experiment(stop_event=stop_event)
         finally:
-            signal.signal(signal.SIGINT, signal.default_int_handler)
+            signal.signal(signal.SIGINT, old)
     ```
 
 Author       : Delwin Tanto
-Last updated : 17 Nov 2025
+Last updated : 10 Mar 2026
 """
 
 import contextlib
 import signal
+from collections.abc import Callable
 from contextlib import contextmanager
 from threading import Event
-from typing import Callable, Optional
-
-# Module-level event set by SIGINT handler to request skipping current step / ending cooldown
-stop_event = Event()
 
 
-def _default_handler(_sig, _frame):
-    """Default SIGINT handler: sets the stop flag.
-
-    Handler signature must accept (signum, frame). Args are prefixed with
-    underscores to indicate they are intentionally unused.
+def register_sigint_handler_manual(
+    stop_event: Event,
+    handler: Callable | None = None,
+) -> Callable:
+    """Register a SIGINT handler that sets *stop_event*.
 
     Args:
-        _sig: Signal number (passed by signal module).
-        _frame: Current stack frame (passed by signal module).
-    """
-    stop_event.set()
-
-
-def register_sigint_handler_manual(handler: Optional[Callable] = None) -> Callable:
-    """Register a SIGINT handler.
-
-    This function installs a signal handler that will be called when Ctrl+C
-    is pressed. Use this inside `__main__` if you prefer manual control
-    over registration and restoration. For automatic cleanup, prefer
-    :func:`register_sigint_handler` context manager instead.
-
-    Args:
+        stop_event: The ``Event`` that the handler will ``.set()`` on Ctrl+C.
         handler: Callable with signature ``handler(signum, frame)``. If ``None``,
-            uses the default handler which sets :data:`stop_event`.
+            a default handler that calls ``stop_event.set()`` is used.
 
     Returns:
-        Callable: The original/previous signal handler so you can restore it later.
-
-    Example:
-        ```python
-        if __name__ == "__main__":
-            old_handler = register_sigint_handler_manual()
-            try:
-                run_experiment()
-            finally:
-                signal.signal(signal.SIGINT, old_handler)
-        ```
+        Callable: The previous signal handler so you can restore it later.
     """
     if handler is None:
-        handler = _default_handler
+
+        def handler(_sig, _frame):
+            stop_event.set()
+
     old_handler = signal.getsignal(signal.SIGINT)
     signal.signal(signal.SIGINT, handler)
     return old_handler
 
 
 @contextmanager
-def register_sigint_handler(handler: Optional[Callable] = None):
+def register_sigint_handler(handler: Callable | None = None):
     """Context manager for automatic SIGINT handler registration and restoration.
 
-    Registers a signal handler on entry and restores the original handler on exit.
-    This is the recommended way to manage signal handlers in scripts with a clear
-    entry/exit point (e.g., inside `if __name__ == "__main__":`).
+    Creates a fresh ``threading.Event``, registers a signal handler that sets it
+    on Ctrl+C, and yields the event. The original signal handler is restored on exit.
 
     Args:
         handler: Callable with signature ``handler(signum, frame)``. If ``None``,
-            uses the default handler which sets :data:`stop_event`.
+            a default handler that sets the yielded event is used.
 
     Yields:
-        None
-
-    Example:
-        ```python
-        from joule_heating.utils import register_sigint_handler, stop_event
-
-        if __name__ == "__main__":
-            with register_sigint_handler():
-                # Ctrl+C will set stop_event
-                while True:
-                    if stop_event.is_set():
-                        stop_event.clear()
-                        print("Stopping...")
-                        break
-        ```
+        Event: A fresh ``threading.Event`` that the SIGINT handler will ``.set()``.
     """
+    stop_event = Event()
     if handler is None:
-        handler = _default_handler
+
+        def handler(_sig, _frame):
+            stop_event.set()
+
     old_handler = signal.getsignal(signal.SIGINT)
     signal.signal(signal.SIGINT, handler)
     try:
-        yield
+        yield stop_event
     finally:
         with contextlib.suppress(ValueError, OSError):
-            # If restoring the handler fails for any reason during shutdown, ignore
             signal.signal(signal.SIGINT, old_handler)

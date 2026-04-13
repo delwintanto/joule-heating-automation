@@ -65,8 +65,7 @@ def detect_sharp_temp_rise(time_data, temp_data, rise_threshold=300.0, max_rise_
         int or None: Index of the detected rise or ``None`` if not found.
     """
     for i, t_start in enumerate(time_data):
-        j_indices = np.where((time_data > t_start) & (
-            time_data - t_start <= max_rise_time))[0]
+        j_indices = np.where((time_data > t_start) & (time_data - t_start <= max_rise_time))[0]
         # Check if there is a sharp jump in temperature
         if len(j_indices) > 0:
             temp_diff = temp_data[j_indices] - temp_data[i]
@@ -119,8 +118,7 @@ def detect_peaks_and_valleys(
         temperature = temperature[start_idx:]
 
     # Smooth the temperature data
-    temp_smooth = savgol_filter(
-        temperature, window_length=window, polyorder=polyorder)
+    temp_smooth = savgol_filter(temperature, window_length=window, polyorder=polyorder)
     gradient = np.gradient(temp_smooth, t)
 
     # Detect peaks and valleys directly from smoothed temperature
@@ -137,8 +135,7 @@ def detect_peaks_and_valleys(
             peak_valley_pairs.append((peak, subsequent_valleys[0]))
 
     # Local minima in gradient
-    all_gradient_minima = argrelextrema(
-        np.abs(gradient), np.less, order=extrema_order)[0]
+    all_gradient_minima = argrelextrema(np.abs(gradient), np.less, order=extrema_order)[0]
 
     # Find the last maxima before each minima
     all_drop_points = []
@@ -158,14 +155,12 @@ def detect_peaks_and_valleys(
 
     # Find the earliest peak-valley pair start time
     if len(peak_valley_pairs) > 0:
-        first_pair_start = min(
-            [pair[0] for pair in peak_valley_pairs])  # first peak time
+        first_pair_start = min([pair[0] for pair in peak_valley_pairs])  # first peak time
     else:
         first_pair_start = len(t)  # if no pairs, set to end of data
 
     # Filter to only keep points before the first peak-valley pairs
-    gradient_minima = all_gradient_minima[all_gradient_minima <
-                                          first_pair_start]
+    gradient_minima = all_gradient_minima[all_gradient_minima < first_pair_start]
     drop_points = [p for p in all_drop_points if p < first_pair_start]
 
     # Pair each drop_point (gradient_maxima) with the next gradient_minima
@@ -176,10 +171,8 @@ def detect_peaks_and_valleys(
             gradient_maxima.append(max_idx)
 
     # Combine gradient_maxima with peaks, and gradient_minima with valleys
-    combined_maxima = np.sort(
-        np.unique(np.concatenate((gradient_maxima, peaks)))).astype(int)
-    combined_minima = np.sort(
-        np.unique(np.concatenate((gradient_minima, valleys)))).astype(int)
+    combined_maxima = np.sort(np.unique(np.concatenate((gradient_maxima, peaks)))).astype(int)
+    combined_minima = np.sort(np.unique(np.concatenate((gradient_minima, valleys)))).astype(int)
 
     return {
         "time": t,
@@ -286,9 +279,7 @@ if __name__ == "__main__":
 
             print(f"Average period: {period:.2f} seconds")
             print(f"Average amplitude: {amplitude:.2f} °C")
-            print(
-                f"Number of peak and valley pairs detected: {len(results['peak_valley_pairs'])}"
-            )
+            print(f"Number of peak and valley pairs detected: {len(results['peak_valley_pairs'])}")
 
             def _plot_data(t, analysed_data):
                 """Plots temperature data with detected features and gradient.
@@ -307,10 +298,8 @@ if __name__ == "__main__":
                 gradient = analysed_data["gradient"]
 
                 _, ax1 = plt.subplots(figsize=(12, 6))
-                ax1.plot(time_data, temp_data,
-                         label="Original Temperature (°C)", color="black")
-                ax1.plot(time_data, temp_smooth,
-                         label="Smoothed Temperature (°C)", color="gray")
+                ax1.plot(time_data, temp_data, label="Original Temperature (°C)", color="black")
+                ax1.plot(time_data, temp_smooth, label="Smoothed Temperature (°C)", color="gray")
 
                 ax1.scatter(
                     np.array(time_data)[analysed_data["combined_maxima"]],

@@ -11,33 +11,26 @@ pip install -e ".[dev]"
 ```
 
 This installs:
-- **Black**: The opinionated code formatter
-- **isort**: Import statement organizer
 - **Ruff**: Fast Python linter
+- **pytest**: Test runner for local validation
 
 ## Usage
 
 ### Format all code automatically
 
 ```bash
-# Format with Black (applies changes)
-black src/ experiments/
-
-# Sort imports with isort (applies changes)
-isort src/ experiments/
-
-# Or use Ruff to format (faster, does both!)
+# Format code
 ruff format src/ experiments/
+
+# Fix imports and other auto-fixable lint issues
+ruff check --fix src/ experiments/
 ```
 
 ### Check without modifying
 
 ```bash
 # Check formatting without applying changes
-black --check src/ experiments/
-
-# Check import sorting
-isort --check-only src/ experiments/
+ruff format --check src/ experiments/
 
 # Check for code issues
 ruff check src/ experiments/
@@ -55,7 +48,7 @@ ruff check --fix src/ experiments/
 All formatting rules are defined in `pyproject.toml`:
 
 - **Line length**: 100 characters
-- **Target Python**: 3.8+
+- **Target Python**: 3.10+
 - **String quotes**: Double quotes (`"`)
 - **Import ordering**: stdlib → third-party → first-party → local
 
@@ -67,15 +60,15 @@ Add to `.vscode/settings.json`:
 
 ```json
 {
-  "python.formatting.provider": "black",
   "[python]": {
+    "editor.defaultFormatter": "charliermarsh.ruff",
     "editor.formatOnSave": true,
     "editor.codeActionsOnSave": {
-      "source.organizeImports": true
+      "source.fixAll": "explicit",
+      "source.organizeImports": "explicit"
     }
   },
-  "python.linting.enabled": true,
-  "python.linting.ruffEnabled": true
+  "ruff.nativeServer": "on"
 }
 ```
 
@@ -85,8 +78,7 @@ Create `.git/hooks/pre-commit`:
 
 ```bash
 #!/bin/sh
-black --check src/ experiments/ || exit 1
-isort --check-only src/ experiments/ || exit 1
+ruff format --check src/ experiments/ || exit 1
 ruff check src/ experiments/ || exit 1
 ```
 
@@ -125,8 +117,8 @@ from joule_heating.devices import init_devices
 
 ```bash
 # Complete formatting pipeline
-black src/ experiments/ && isort src/ experiments/ && ruff check --fix src/ experiments/
+ruff format src/ experiments/ && ruff check --fix src/ experiments/
 
 # Check everything before commit
-black --check src/ experiments/ && isort --check-only src/ experiments/ && ruff check src/ experiments/
+ruff format --check src/ experiments/ && ruff check src/ experiments/
 ```

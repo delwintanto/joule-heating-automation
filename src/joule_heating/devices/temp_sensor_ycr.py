@@ -112,8 +112,7 @@ def ycr_open(port=None, slave_address=1):
         print(f"YCR sensor initialised on {port}.")
         return device
     except (OSError, minimalmodbus.ModbusException) as e:
-        raise TemperatureSensorError(
-            f"Failed to initialise YCR-D30180AR: {e}") from e
+        raise TemperatureSensorError(f"Failed to initialise YCR-D30180AR: {e}") from e
 
 
 # -------------------- Temperature --------------------
@@ -140,7 +139,7 @@ def ycr_read_temp(temp_sensor):
         TemperatureSensorError,
         struct.error,
         OSError,
-        minimalmodbus.ModbusException
+        minimalmodbus.ModbusException,
     ):
         return float("nan")
 
@@ -248,7 +247,8 @@ def ycr_set_avg_time(temp_sensor, *, avg_time):
     """
     if not (avg_time == 0 or 0.1 <= avg_time <= 999.9):
         raise TemperatureSensorError(
-            "Averaging time must be 0 (real-time) or between 0.1 and 999.9 seconds")
+            "Averaging time must be 0 (real-time) or between 0.1 and 999.9 seconds"
+        )
 
     try:
         regs = _float_to_regs_be_lowfirst(avg_time)

@@ -29,6 +29,8 @@ Author       : Delwin Tanto
 Last updated : 16 Dec 2025
 """
 
+from typing import NamedTuple
+
 from joule_heating.plotting import close_plot
 
 from .exceptions import PSUError, TemperatureSensorError
@@ -37,7 +39,37 @@ from .temp_sensor_optris import optris_open, optris_set_laser
 from .temp_sensor_ycr import ycr_open, ycr_set_laser
 
 
-def init_devices():
+class Devices(NamedTuple):
+    """Container for hardware device handles.
+
+    Attributes:
+        power_supply: eTM-5050PC PSU (minimalmodbus.Instrument).
+        ycr_sensor: YCR IR sensor (minimalmodbus.Instrument or None).
+        optris_sensor: Optris IR sensor (serial.Serial or None).
+    """
+
+    power_supply: object
+    ycr_sensor: object
+    optris_sensor: object
+
+
+class Measurement(NamedTuple):
+    """Single measurement reading from hardware.
+
+    Attributes:
+        temperature: Temperature in °C.
+        voltage: Voltage in V.
+        current: Current in A.
+        resistance: Resistance in Ω (computed as V/I, or inf when I=0).
+    """
+
+    temperature: float
+    voltage: float
+    current: float
+    resistance: float
+
+
+def init_devices() -> "Devices":
     """Initialize PSU and at least one IR temperature sensor.
 
     Opens connections to the eTM-5050PC power supply (required) and attempts
@@ -46,8 +78,8 @@ def init_devices():
     Uses automatic serial port discovery by hardware ID.
 
     Returns:
-        tuple: ``(psu, ycr_sensor, optris_sensor)`` where:
-            - ``psu`` is always non-None (required)
+        Devices: Named tuple ``(power_supply, ycr_sensor, optris_sensor)`` where:
+            - ``power_supply`` is always non-None (required)
             - ``ycr_sensor`` is the YCR sensor instance or None if unavailable
             - ``optris_sensor`` is the Optris sensor instance or None if unavailable
             - At least one of the two sensors will be non-None
@@ -87,8 +119,7 @@ def init_devices():
 
     # Require at least one sensor to be connected
     if ycr_sensor is None and optris_sensor is None:
-        error_msg = "Both temperature sensors failed to connect:\n" + \
-            "\n".join(errors)
+        error_msg = "Both temperature sensors failed to connect:\n" + "\n".join(errors)
         raise TemperatureSensorError(error_msg)
 
     # Report which sensors connected successfully
@@ -99,10 +130,10 @@ def init_devices():
     else:
         print("PSU and Optris sensor connected. YCR sensor unavailable.")
 
-    return psu, ycr_sensor, optris_sensor
+    return Devices(psu, ycr_sensor, optris_sensor)
 
 
-def shutdown_devices(psu=None, ycr_sensor=None, optris_sensor=None, *, log=True):
+def shutdown_devices(devices: "Devices | None" = None, *, log: bool = True) -> None:
     """Safely shutdown PSU and turn off IR sensor lasers.
 
     This function attempts to power off the PSU and disable lasers on both
@@ -112,57 +143,44 @@ def shutdown_devices(psu=None, ycr_sensor=None, optris_sensor=None, *, log=True)
     when resources must be released gracefully.
 
     Args:
-        psu: PSU device instance (minimalmodbus.Instrument or None).
-            If ``None``, PSU shutdown is skipped.
-        ycr_sensor: YCR IR temperature sensor instance (minimalmodbus.Instrument
-            or None). If ``None``, YCR laser shutdown is skipped.
-        optris_sensor: Optris IR sensor instance (serial.Serial or None).
-            If ``None``, Optris laser shutdown is skipped.
+        devices (Devices or None): Device handles to shut down.
         log (bool): If ``True``, print error messages when device shutdown fails.
             Default is ``True``. Set to ``False`` to suppress output.
 
     Returns:
         None
-
-    Note:
-        This function is non-fatal by design. Even if one device fails to
-        shutdown, the function will attempt to shutdown remaining devices.
-        Check log output (if enabled) to diagnose any shutdown issues.
-
-    Example:
-        ```python
-        try:
-            run_experiment()
-        finally:
-            shutdown_devices(psu, ycr_sensor, optris_sensor, log=True)
-        ```
     """
+    if devices is None:
+        return
+
     # Attempt PSU shutdown
-    if psu is not None:
+    if devices.power_supply is not None:
         try:
-            etm_set_onoff(psu, on=False)
+            etm_set_onoff(devices.power_supply, on=False)
         except PSUError as e:
             if log:
                 print(f"[Warning] Error switching off PSU: {e}")
 
     # Attempt YCR laser shutdown
-    if ycr_sensor is not None:
+    if devices.ycr_sensor is not None:
         try:
-            ycr_set_laser(ycr_sensor, on=False)
+            ycr_set_laser(devices.ycr_sensor, on=False)
         except TemperatureSensorError as e:
             if log:
                 print(f"[Warning] Error turning off YCR laser: {e}")
 
     # Attempt Optris laser shutdown
-    if optris_sensor is not None:
+    if devices.optris_sensor is not None:
         try:
-            optris_set_laser(optris_sensor, on=False)
+            optris_set_laser(devices.optris_sensor, on=False)
         except TemperatureSensorError as e:
             if log:
                 print(f"[Warning] Error turning off Optris laser: {e}")
 
 
-def close_all(psu=None, ycr_sensor=None, optris_sensor=None, *, log=True, skip_plot=False):
+def close_all(
+    devices: "Devices | None" = None, *, log: bool = True, skip_plot: bool = False
+) -> None:
     """Convenience wrapper: shutdown devices and close plot.
 
     Combines :func:`shutdown_devices` and plot closing into a single call.
@@ -170,26 +188,15 @@ def close_all(psu=None, ycr_sensor=None, optris_sensor=None, *, log=True, skip_p
     graphics resources are released.
 
     Args:
-        psu: PSU device instance or ``None``.
-        ycr_sensor: YCR IR sensor instance or ``None``.
-        optris_sensor: Optris IR sensor instance or ``None``.
+        devices (Devices or None): Device handles to shut down.
         log (bool): If ``True``, print error messages. Default is ``True``.
-        skip_plot (bool): If ``True``, skip closing plot. Use when plot is already
-            closed or when calling from background thread. Default is ``False``.
+        skip_plot (bool): If ``True``, skip closing plot. Default is ``False``.
 
     Returns:
         None
-
-    Example:
-        ```python
-        try:
-            run_experiment()
-        finally:
-            close_all(psu, ycr_sensor, optris_sensor, figure, log=True)
-        ```
     """
     # Shutdown hardware
-    shutdown_devices(psu, ycr_sensor, optris_sensor, log=log)
+    shutdown_devices(devices, log=log)
 
     # Close plot (skip if already closed or called from background thread)
     if not skip_plot:
@@ -200,48 +207,33 @@ def close_all(psu=None, ycr_sensor=None, optris_sensor=None, *, log=True, skip_p
                 print(f"[Warning] Error closing plot: {e}")
 
 
-def enable_lasers(ycr_sensor=None, optris_sensor=None, on=True, *, log=True):
+def enable_lasers(devices: "Devices | None" = None, on: bool = True, *, log: bool = True) -> None:
     """Enable or disable IR sensor laser pointers.
 
-    Turns the laser pointers ON or OFF on both YCR and Optris sensors.
-    This is typically called at the start of an experiment to enable targeting,
-    and at shutdown to disable them for safety.
-
     Args:
-        ycr_sensor: YCR IR temperature sensor instance (minimalmodbus.Instrument
-            or None). If ``None``, YCR laser control is skipped.
-        optris_sensor: Optris IR sensor instance (serial.Serial or None).
-            If ``None``, Optris laser control is skipped.
+        devices (Devices or None): Device handles. If ``None``, nothing happens.
         on (bool): If ``True``, turn lasers ON. If ``False``, turn them OFF.
-            Default is ``True``.
         log (bool): If ``True``, print error messages when laser control fails.
-            Default is ``True``.
 
     Returns:
         None
-
-    Example:
-        ```python
-        # Turn on lasers at experiment start
-        enable_lasers(ycr_sensor, optris_sensor, on=True)
-
-        # Turn off lasers at experiment end
-        enable_lasers(ycr_sensor, optris_sensor, on=False)
-        ```
     """
+    if devices is None:
+        return
+
     # Attempt YCR laser control
-    if ycr_sensor is not None:
+    if devices.ycr_sensor is not None:
         try:
-            ycr_set_laser(ycr_sensor, on=on)
+            ycr_set_laser(devices.ycr_sensor, on=on)
         except TemperatureSensorError as e:
             if log:
                 status = "ON" if on else "OFF"
                 print(f"[Warning] Error turning {status} YCR laser: {e}")
 
     # Attempt Optris laser control
-    if optris_sensor is not None:
+    if devices.optris_sensor is not None:
         try:
-            optris_set_laser(optris_sensor, on=on)
+            optris_set_laser(devices.optris_sensor, on=on)
         except TemperatureSensorError as e:
             if log:
                 status = "ON" if on else "OFF"

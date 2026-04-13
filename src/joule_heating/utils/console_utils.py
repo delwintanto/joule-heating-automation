@@ -10,7 +10,7 @@ Last updated : 11 Dec 2025
 import ctypes
 
 
-def position_console_window(x, y, width, height):
+def position_console_window(x: int, y: int, width: int, height: int) -> bool:
     """Position the console window (Windows only).
 
     Args:

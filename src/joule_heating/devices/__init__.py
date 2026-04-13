@@ -16,7 +16,14 @@ Author       : Delwin Tanto
 Last updated : 17 Dec 2025
 """
 
-from .device_utils import close_all, enable_lasers, init_devices, shutdown_devices
+from .device_utils import (
+    Devices,
+    Measurement,
+    close_all,
+    enable_lasers,
+    init_devices,
+    shutdown_devices,
+)
 from .exceptions import DeviceError, PSUError, TemperatureSensorError
 from .power_supply_etm import (
     etm_read_current,
@@ -28,6 +35,8 @@ from .power_supply_etm import (
 from .temp_sensor_utils import read_temperature
 
 __all__ = [
+    "Devices",
+    "Measurement",
     "init_devices",
     "close_all",
     "shutdown_devices",

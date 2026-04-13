@@ -10,14 +10,16 @@ Author       : Delwin Tanto
 Last updated : 06 Nov 2025
 """
 
+from typing import Any
+
 
 def print_summary(
-    sample_id,
-    saved_data,
-    final_csv_path,
-    pid_curr=None,
-    pid_volt=None,
-    pid_gains=None,
+    sample_id: str,
+    saved_data: Any,
+    final_csv_path: str,
+    pid_curr: float | None = None,
+    pid_volt: float | None = None,
+    pid_gains: tuple[float, float, float] | None = None,
 ):
     """Print a short summary of the experiment results.
 
@@ -48,17 +50,15 @@ def print_summary(
         print(f"{'PID gains:':<22} Kp: {kp:.3f}, Ki: {ki:.3f}, Kd: {kd:.3f}")
 
     print(
-        f"{'Total time (s):':<22} " f"{saved_data['Time (s)'].max():.2f}"
-        if len(saved_data)
-        else "NaN"
+        f"{'Total time (s):':<22} {saved_data['Time (s)'].max():.2f}" if len(saved_data) else "NaN"
     )
     temp_max = saved_data["Temperature (°C)"].max(skipna=True)
-    print(f"{'Max temperature (°C):':<22} " f"{temp_max:.2f}" if temp_max == temp_max else "NaN")
+    print(f"{'Max temperature (°C):':<22} {temp_max:.2f}" if temp_max == temp_max else "NaN")
     print(f"{'Data file:':<22} {final_csv_path}")
     print("-" * 50)
 
 
-def print_steps(col1, col2, cc=True):
+def print_steps(col1: list, col2: list, cc: bool = True) -> None:
     """Print the heating phases in a human readable table.
 
     This prints either a constant-current style table (step, current, duration)
@@ -79,7 +79,7 @@ def print_steps(col1, col2, cc=True):
     if cc:
         print(f"{'Step':<10} {'Current (A)':<18} {'Duration (s)':<18}")
         print("-" * 50)
-        for i, (v1, v2) in enumerate(zip(col1, col2), start=1):
+        for i, (v1, v2) in enumerate(zip(col1, col2, strict=True), start=1):
             print(f"{i:<10} {v1:<18} {v2:<18}")
     else:
         print(f"{'Step':<10} {'Set Temp (°C)':<18} {'Duration (s)':<18}")

@@ -49,30 +49,35 @@ You should see the version number, e.g. `1.0.0`
 
 ## Running Experiments
 
-Once installed, you can run the experiment scripts directly:
+Once installed, you can run the packaged console scripts directly:
 
 ### Constant Current Experiment
 ```bash
-python experiments\run_cc_experiment.py
+joule-cc
 ```
 
 ### PID-Controlled Experiment
 ```bash
-python experiments\run_pid_experiment.py
+joule-pid
+```
+
+You can also invoke the modules explicitly:
+
+```bash
+python -m joule_heating.experiments.cc
+python -m joule_heating.experiments.pid
 ```
 
 ## Project Structure
 
 ```
 joule-heating-automation/
-├── experiments/              # Main experiment scripts
-│   ├── run_cc_experiment.py
-│   └── run_pid_experiment.py
 ├── src/
 │   └── joule_heating/       # Main package
 │       ├── analysis/        # Data analysis modules
 │       ├── data/            # Data saving and file management
 │       ├── devices/         # Hardware interfaces (PSU, sensors)
+│       ├── experiments/     # Package entry points
 │       ├── gui/             # Tkinter GUI components
 │       ├── plotting/        # Matplotlib plotting
 │       └── utils/           # Utility functions
@@ -89,7 +94,7 @@ joule-heating-automation/
 pip install -e ".[dev]"
 ```
 
-This includes additional tools like `pytest`, `black`, and `flake8`.
+This includes additional tools like `pytest` and `ruff`.
 
 ### Code Style
 
@@ -117,8 +122,14 @@ Set-ExecutionPolicy -ExecutionPolicy RemoteSigned -Scope CurrentUser
 
 Or run scripts directly without activation:
 ```powershell
-& ".venv\Scripts\python.exe" experiments\run_cc_experiment.py
+& ".venv\Scripts\python.exe" -m joule_heating.experiments.cc
 ```
+
+### Cross-Platform Notes
+
+- The package installs on Windows, macOS, and Linux.
+- Some desktop integrations are Windows-specific and become no-ops on other platforms.
+- The hardware workflow remains Windows-first unless you verify your serial drivers and device stack on another OS.
 
 ### Pylance/VS Code Issues
 

@@ -14,7 +14,9 @@ from tkinter import messagebox, ttk
 
 from tktooltip import ToolTip
 
-from joule_heating.plotting import close_plot, plot_data, update_live_plot
+from joule_heating.devices import Devices
+from joule_heating.plotting import close_plot, live_plot_update, plot_data
+from joule_heating.utils import alert_cooldown_end
 
 from .common import (
     LabeledEntry,
@@ -31,8 +33,7 @@ from .common import (
 
 
 def gui_cc(psu=None, ycr=None, optris=None):
-    """
-    Launch a GUI for Constant-Current Joule Heating experiment.
+    """Launch a GUI for Constant-Current Joule Heating experiment.
 
     Includes a "Test Lasers" section to verify sample alignment before starting.
 
@@ -65,7 +66,7 @@ def gui_cc(psu=None, ycr=None, optris=None):
     ).grid(row=row.next(), column=0, columnspan=3, sticky=tk.W, padx=5, pady=(0, 10))
 
     # Device state for laser testing
-    devices = {"psu": psu, "ycr": ycr, "optris": optris}
+    devices = Devices(psu, ycr, optris)
     lasers_on = [False]  # Mutable container to track laser state
 
     # Laser test controls (alignment)
@@ -78,10 +79,8 @@ def gui_cc(psu=None, ycr=None, optris=None):
     configure_laser_button_style()
 
     btn_toggle = ttk.Button(gui_window, text="Toggle Lasers ON/OFF")
-    btn_toggle.config(command=create_laser_toggle_callback(
-        devices, lasers_on, btn_toggle))
-    btn_toggle.grid(row=laser_row, column=1, columnspan=2,
-                    sticky=tk.EW, padx=5, pady=(0, 10))
+    btn_toggle.config(command=create_laser_toggle_callback(devices, lasers_on, btn_toggle))
+    btn_toggle.grid(row=laser_row, column=1, columnspan=2, sticky=tk.EW, padx=5, pady=(0, 10))
     ToolTip(
         btn_toggle,
         msg="Toggle both lasers on/off for sample alignment verification.",
@@ -101,8 +100,7 @@ def gui_cc(psu=None, ycr=None, optris=None):
         ),
         "Durations (s)": (
             tk.StringVar(),
-            "Duration for each current step.\n"
-            "Use commas for multiple values, e.g., 10,15,20.",
+            "Duration for each current step.\nUse commas for multiple values, e.g., 10,15,20.",
         ),
         "Max Voltage (V)": (
             tk.StringVar(),
@@ -112,16 +110,13 @@ def gui_cc(psu=None, ycr=None, optris=None):
 
     entries = {}
     for label, (var, tooltip) in fields.items():
-        entries[label] = LabeledEntry(
-            gui_window, label + ":", row.next(), var=var, tooltip=tooltip)
+        entries[label] = LabeledEntry(gui_window, label + ":", row.next(), var=var, tooltip=tooltip)
 
     # -------------------- Status Display Section --------------------
 
     # Create a labeled frame for status display
-    status_frame = ttk.LabelFrame(
-        gui_window, text="Experiment Status", padding=10)
-    status_frame.grid(row=row.next(), column=0, columnspan=3,
-                      sticky=tk.EW, padx=10, pady=10)
+    status_frame = ttk.LabelFrame(gui_window, text="Experiment Status", padding=10)
+    status_frame.grid(row=row.next(), column=0, columnspan=3, sticky=tk.EW, padx=10, pady=10)
 
     # Initialize status variables
     status_vars = {
@@ -193,8 +188,7 @@ def gui_cc(psu=None, ycr=None, optris=None):
 
             # Validation checks
             if len(output["currents"]) != len(output["durations"]):
-                raise ValueError(
-                    "Mismatch in number of currents and durations.")
+                raise ValueError("Mismatch in number of currents and durations.")
             if not all(x > 0 for x in output["durations"]):
                 raise ValueError("Duration values must be positive.")
             if output["voltage"] <= 0:
@@ -206,8 +200,7 @@ def gui_cc(psu=None, ycr=None, optris=None):
             total_time = sec_to_hhmmss(sum(output["durations"]))
             if not messagebox.askyesno(
                 "Confirm",
-                f"Approximate length of the experiment: {total_time}\n"
-                "Start experiment?",
+                f"Approximate length of the experiment: {total_time}\nStart experiment?",
             ):
                 return
 
@@ -240,11 +233,9 @@ def gui_cc(psu=None, ycr=None, optris=None):
     btn_save = ttk.Button(
         gui_window,
         text="Save Parameters (Ctrl+S)",
-        command=lambda: save_settings(
-            {label: entries[label].get() for label in fields}),
+        command=lambda: save_settings({label: entries[label].get() for label in fields}),
     )
-    btn_save.grid(row=button_row, column=0, columnspan=3,
-                  sticky=tk.EW, padx=10, pady=2)
+    btn_save.grid(row=button_row, column=0, columnspan=3, sticky=tk.EW, padx=10, pady=2)
     ToolTip(btn_save, msg="Save parameters to a file.", delay=0.3)
 
     # Load button
@@ -252,21 +243,16 @@ def gui_cc(psu=None, ycr=None, optris=None):
     btn_load = ttk.Button(
         gui_window,
         text="Load Parameters (Ctrl+L)",
-        command=lambda: load_settings(
-            {label: entries[label].var for label in fields}),
+        command=lambda: load_settings({label: entries[label].var for label in fields}),
     )
-    btn_load.grid(row=button_row, column=0, columnspan=3,
-                  sticky=tk.EW, padx=10, pady=2)
+    btn_load.grid(row=button_row, column=0, columnspan=3, sticky=tk.EW, padx=10, pady=2)
     ToolTip(btn_load, msg="Load parameters from a file.", delay=0.3)
 
     # Start button
     button_row = row.next()
-    btn_start = ttk.Button(
-        gui_window, text="Start Experiment (F2)", command=start)
-    btn_start.grid(row=button_row, column=0, columnspan=3,
-                   sticky=tk.EW, padx=10, pady=(10, 2))
-    ToolTip(
-        btn_start, msg="Start the experiment with the entered parameters.", delay=0.3)
+    btn_start = ttk.Button(gui_window, text="Start Experiment (F2)", command=start)
+    btn_start.grid(row=button_row, column=0, columnspan=3, sticky=tk.EW, padx=10, pady=(10, 2))
+    ToolTip(btn_start, msg="Start the experiment with the entered parameters.", delay=0.3)
 
     # Skip button
     button_row = row.next()
@@ -276,8 +262,7 @@ def gui_cc(psu=None, ycr=None, optris=None):
         command=lambda: control_vars["skip_requested"].set(True),
         state="disabled",
     )
-    btn_skip.grid(row=button_row, column=0, columnspan=3,
-                  sticky=tk.EW, padx=10, pady=2)
+    btn_skip.grid(row=button_row, column=0, columnspan=3, sticky=tk.EW, padx=10, pady=2)
     ToolTip(
         btn_skip,
         msg="Skip the current heating step and move to the next one.",
@@ -288,10 +273,8 @@ def gui_cc(psu=None, ycr=None, optris=None):
     def request_stop():
         """Request full experiment stop and log to terminal once."""
         if not control_vars["stop_requested"].get():
-            print(
-                f"[{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}] "
-                "Experiment stopped by user."
-            )
+            print(f"[{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}] Experiment stopped by user.")
+            alert_cooldown_end()
         control_vars["stop_requested"].set(True)
 
     # Stop button
@@ -302,8 +285,7 @@ def gui_cc(psu=None, ycr=None, optris=None):
         command=request_stop,
         state="disabled",
     )
-    btn_stop.grid(row=button_row, column=0, columnspan=3,
-                  sticky=tk.EW, padx=10, pady=2)
+    btn_stop.grid(row=button_row, column=0, columnspan=3, sticky=tk.EW, padx=10, pady=2)
     ToolTip(btn_stop, msg="Stop the experiment immediately.", delay=0.3)
     control_vars["stop_button"] = btn_stop  # Store reference
 
@@ -389,15 +371,12 @@ def create_gui_callbacks_cc(gui_window, status_vars, control_vars):
             None
         """
         gui_window.after(0, lambda: status_vars["phase"].set(phase))
-        gui_window.after(
-            0, lambda: status_vars["temperature"].set(temperature))
-        gui_window.after(
-            0, lambda: status_vars["max_temperature"].set(max_temperature))
+        gui_window.after(0, lambda: status_vars["temperature"].set(temperature))
+        gui_window.after(0, lambda: status_vars["max_temperature"].set(max_temperature))
         gui_window.after(0, lambda: status_vars["current"].set(current))
         gui_window.after(0, lambda: status_vars["voltage"].set(voltage))
         gui_window.after(0, lambda: status_vars["resistance"].set(resistance))
-        gui_window.after(
-            0, lambda: status_vars["time_remaining"].set(time_remaining))
+        gui_window.after(0, lambda: status_vars["time_remaining"].set(time_remaining))
 
     def check_skip():
         """Check if skip or stop was requested in the GUI.
@@ -488,20 +467,14 @@ def create_plot_callbacks_cc(gui_window, plot_position="+30+30"):
         tuple: (update_plot, show_final_plot, close_live_plot) callback functions.
     """
 
-    def update_plot(fig, axes, lines, data):
+    def update_plot(live_plot, data):
         """Update live plot from main thread.
 
         Args:
-            fig (matplotlib.figure.Figure): Figure object.
-            axes (tuple): Tuple of axes objects.
-            lines (tuple): Tuple of line objects.
+            live_plot (LivePlot): Live plot container.
             data (dict): Data dictionary with measurements.
-
-        Returns:
-            None
         """
-        gui_window.after(0, lambda: update_live_plot(
-            fig, axes, lines, data=data))
+        gui_window.after(0, lambda: live_plot_update(live_plot, data=data))
 
     def show_final_plot(saved_data, sample_name):
         """Show final summary plot from main thread.

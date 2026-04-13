@@ -21,8 +21,7 @@ def find_port_by_hwid(hwid_substr):
     """
     key = (hwid_substr or "").lower()
     if not key:
-        raise ValueError(
-            "HWID substring is empty; set HWID_SUBSTR to something specific.")
+        raise ValueError("HWID substring is empty; set HWID_SUBSTR to something specific.")
     matches = [
         port.device
         for port in serial.tools.list_ports.comports()
@@ -31,6 +30,5 @@ def find_port_by_hwid(hwid_substr):
     if not matches:
         return None
     if len(matches) > 1:
-        raise ValueError(
-            f"Multiple ports matched HWID substring {hwid_substr!r}: {matches}")
+        raise ValueError(f"Multiple ports matched HWID substring {hwid_substr!r}: {matches}")
     return matches[0]

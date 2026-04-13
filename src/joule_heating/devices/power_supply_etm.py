@@ -18,6 +18,8 @@ Author       : Delwin Tanto
 Last updated : 06 Nov 2025
 """
 
+from typing import Any
+
 import minimalmodbus
 
 from .device_registry import DEVICE_HWIDS
@@ -31,7 +33,7 @@ HWID_SUBSTR = DEVICE_HWIDS["PSU"]  # eTM-5050PC PSU hardware ID substring
 # -------------------- Initialisation --------------------
 
 
-def etm_open(port=None, slave_address=1):
+def etm_open(port: str | None = None, slave_address: int = 1) -> Any:
     """Open and initialise a serial connection to the eTM-5050PC PSU.
 
     Args:
@@ -72,7 +74,7 @@ def etm_open(port=None, slave_address=1):
 # -------------------- Write commands --------------------
 
 
-def etm_set_onoff(power_supply, *, on):
+def etm_set_onoff(power_supply: Any, *, on: bool) -> None:
     """Turn the PSU output on or off.
 
     Args:
@@ -85,11 +87,10 @@ def etm_set_onoff(power_supply, *, on):
     try:
         power_supply.write_register(0x0001, 1 if on else 0)
     except (OSError, minimalmodbus.ModbusException) as e:
-        raise PSUError(
-            f"Failed to turn PSU {'ON' if on else 'OFF'}: {e}") from e
+        raise PSUError(f"Failed to turn PSU {'ON' if on else 'OFF'}: {e}") from e
 
 
-def etm_set_voltage(power_supply, *, voltage):
+def etm_set_voltage(power_supply: Any, *, voltage: float) -> None:
     """Set the PSU output voltage.
 
     Args:
@@ -108,7 +109,7 @@ def etm_set_voltage(power_supply, *, voltage):
         raise PSUError(f"Failed to set PSU voltage to {voltage} V: {e}") from e
 
 
-def etm_set_current(power_supply, *, current):
+def etm_set_current(power_supply: Any, *, current: float) -> None:
     """Set the PSU output current.
 
     Args:
@@ -130,7 +131,7 @@ def etm_set_current(power_supply, *, current):
 # -------------------- Read commands --------------------
 
 
-def etm_read_voltage(power_supply):
+def etm_read_voltage(power_supply: Any) -> float:
     """Read the PSU output voltage.
 
     Args:
@@ -145,7 +146,7 @@ def etm_read_voltage(power_supply):
         return float("nan")
 
 
-def etm_read_current(power_supply):
+def etm_read_current(power_supply: Any) -> float:
     """Read the PSU output current.
 
     Args:

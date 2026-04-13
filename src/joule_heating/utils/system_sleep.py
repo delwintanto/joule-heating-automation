@@ -30,8 +30,8 @@ Last updated : 18 Jun 2025
 import ctypes
 import platform
 import subprocess
+from collections.abc import Iterator
 from contextlib import contextmanager
-from typing import Optional
 
 # --- Windows SetThreadExecutionState flags ---
 ES_CONTINUOUS = 0x80000000
@@ -68,8 +68,8 @@ class _SystemSleepManager:
         """
         self.system = platform.system()  # Detect the current OS
         # For macOS caffeinate
-        self._process: Optional[subprocess.Popen] = None
-        self._prev_state: Optional[int] = None  # For Windows execution state
+        self._process: subprocess.Popen | None = None
+        self._prev_state: int | None = None  # For Windows execution state
 
         if enable:
             self.start()  # Automatically start preventing sleep
@@ -177,7 +177,7 @@ class _SystemSleepManager:
 
 
 @contextmanager
-def prevent_sleep():
+def prevent_sleep() -> Iterator["_SystemSleepManager"]:
     """Context manager to prevent system sleep during critical operations.
 
     This is the preferred way to use this module as it ensures proper cleanup.
@@ -204,7 +204,7 @@ def prevent_sleep():
         manager.stop()
 
 
-def keep_awake():
+def keep_awake() -> "_SystemSleepManager":
     """Alternative API that requires manual stop.
 
     Returns:

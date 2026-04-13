@@ -29,15 +29,15 @@ Dependencies:
 """
 
 import math
+from typing import Any
 
 from .exceptions import TemperatureSensorError
 from .temp_sensor_optris import optris_read_actual_temp
 from .temp_sensor_ycr import ycr_read_temp
 
 
-def read_temperature(ycr_sensor, optris_sensor):
-    """
-    Read temperature from the appropriate sensor.
+def read_temperature(ycr_sensor: Any, optris_sensor: Any) -> float:
+    """Read temperature from the appropriate sensor.
 
     If temperature is below YCR's minimum operating range (300°C), use Optris.
     Otherwise, use YCR for better accuracy at higher temperatures.

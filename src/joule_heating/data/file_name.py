@@ -18,9 +18,9 @@ import re
 
 
 def generate_filename(
-    sample_name,
-    tuning=False,
-):
+    sample_name: str,
+    tuning: bool = False,
+) -> str:
     """Generate a unique filename for storing experimental data.
 
     The function creates a timestamped CSV filename in a standard Joule Heating

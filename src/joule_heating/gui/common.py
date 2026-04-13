@@ -13,6 +13,7 @@ import re
 import threading
 import tkinter as tk
 from tkinter import filedialog, messagebox, ttk
+from typing import NamedTuple
 
 from tktooltip import ToolTip
 
@@ -20,7 +21,24 @@ from joule_heating.devices import TemperatureSensorError, enable_lasers
 from joule_heating.plotting import live_plot_init
 
 # Default directory for saving/loading parameters
-DEFAULTDIR = r"C:\Users\delwintanto\Documents\Joule_Heating_Data\Experiment Parameters"
+_PARAMS_DIR = os.path.join(
+    os.path.expanduser("~"), "Documents", "Joule_Heating_Data", "Experiment Parameters"
+)
+DEFAULTDIR = _PARAMS_DIR if os.path.isdir(_PARAMS_DIR) else os.getcwd()
+
+
+class ExperimentCallbacks(NamedTuple):
+    """Callbacks for experiment control and monitoring.
+
+    Attributes:
+        status: Update GUI status display (keyword args: phase, temperature, etc.).
+        skip_check: Check if user requested skip. Returns bool.
+        update_plot: Update live plot from main thread.
+    """
+
+    status: object = None
+    skip_check: object = None
+    update_plot: object = None
 
 
 # -------------------- Widget Classes --------------------
@@ -52,8 +70,7 @@ class LabeledEntry:
         self.label = ttk.Label(master, text=label)
         self.entry = ttk.Entry(master, textvariable=self.var, width=width)
         self.label.grid(row=row, column=col, sticky=tk.W, padx=5, pady=2)
-        self.entry.grid(row=row, column=col + 1,
-                        columnspan=colspan, sticky=tk.EW, padx=5, pady=2)
+        self.entry.grid(row=row, column=col + 1, columnspan=colspan, sticky=tk.EW, padx=5, pady=2)
         if tooltip:
             ToolTip(self.entry, msg=tooltip, delay=0.3)
 
@@ -186,8 +203,7 @@ def save_settings(file_vars):
         # Save to text file
         else:
             with open(file_path, "w", encoding="utf-8", newline="") as file:
-                file.writelines(f"{key}: {value}\n" for key,
-                                value in file_vars.items())
+                file.writelines(f"{key}: {value}\n" for key, value in file_vars.items())
         show_info("Parameters saved successfully!")
     except OSError as e:
         show_error(f"Error saving file: {e}")
@@ -260,17 +276,13 @@ def create_radio_button(master, label_text, options, var, row_counter):
         row_counter (RowCounter): Row counter for widget placement.
     """
     row = row_counter.next()
-    ttk.Label(master, text=label_text).grid(
-        row=row, column=0, sticky=tk.W, padx=5, pady=2
-    )
+    ttk.Label(master, text=label_text).grid(row=row, column=0, sticky=tk.W, padx=5, pady=2)
     for i, (text, tooltip) in enumerate(options, 1):
         rb = ttk.Radiobutton(
             master,
             text=text,
             variable=var,
-            value=text.split()[0]
-            if label_text.startswith("Temperature")
-            else text,
+            value=text.split()[0] if label_text.startswith("Temperature") else text,
         )
         rb.grid(row=row, column=i, sticky=tk.W, padx=5, pady=2)
         ToolTip(rb, msg=tooltip, delay=0.3)
@@ -293,41 +305,23 @@ def sec_to_hhmmss(seconds_float):
 def create_laser_toggle_callback(devices, lasers_on, button):
     """Create a callback function to toggle IR sensor lasers for sample alignment.
 
-    This factory function returns a callback that toggles the laser state and updates
-    the button appearance to indicate the current laser status (red when on).
-
     Args:
-        devices (dict): Device dictionary with keys 'ycr' and 'optris' containing
-            sensor instances (or None if unavailable).
+        devices (Devices): Device handles container.
         lasers_on (list): Single-element list containing boolean laser state.
-            Wrapped in list to allow mutation from within callback.
         button (ttk.Button): Button widget to update appearance based on laser state.
 
     Returns:
         callable: Callback function to be used as button command.
-
-    Example:
-        ```python
-        devices = {"psu": psu, "ycr": ycr_sensor, "optris": optris_sensor}
-        lasers_on = [False]
-        btn = ttk.Button(parent, text="Toggle Lasers ON/OFF")
-        btn.config(command=create_laser_toggle_callback(devices, lasers_on, btn))
-        ```
     """
 
     def toggle_lasers():
         """Toggle lasers on/off for sample alignment."""
-        if not devices["ycr"] and not devices["optris"]:
-            show_error(
-                "Temperature sensors not initialized. Cannot toggle lasers.")
+        if not devices.ycr_sensor and not devices.optris_sensor:
+            show_error("Temperature sensors not initialized. Cannot toggle lasers.")
             return
         try:
             lasers_on[0] = not lasers_on[0]
-            enable_lasers(
-                ycr_sensor=devices["ycr"],
-                optris_sensor=devices["optris"],
-                on=lasers_on[0],
-            )
+            enable_lasers(devices, on=lasers_on[0])
             # Update button appearance based on laser state
             if lasers_on[0]:
                 button.config(style="LaserOn.TButton")
@@ -349,8 +343,7 @@ def configure_laser_button_style():
         ttk.Style: Configured style object.
     """
     style = ttk.Style()
-    style.configure("LaserOn.TButton", background="#FF0000",
-                    foreground="black")
+    style.configure("LaserOn.TButton", background="#FF0000", foreground="black")
     return style
 
 
@@ -439,15 +432,7 @@ def create_experiment_starter(
         sample_name = output.get("sample", "Unknown")
 
         # Create live plot on main thread
-        (
-            figure,
-            ax_temp,
-            ax_curr,
-            ax_res,
-            line_temp,
-            line_curr,
-            line_res,
-        ) = live_plot_init(sample_name, position=plot_position)
+        live_plot = live_plot_init(sample_name, position=plot_position)
 
         # Refocus GUI window after plot creation so keyboard shortcuts work
         gui_window.focus_force()
@@ -460,16 +445,10 @@ def create_experiment_starter(
         ) = create_plot_callbacks_func(gui_window, plot_position)
 
         # Prepare callbacks tuple
-        callbacks = (update_status, check_skip, on_experiment_complete,
-                     update_plot, show_final_plot, close_live_plot)
+        exp_callbacks = ExperimentCallbacks(update_status, check_skip, update_plot)
+        callbacks = (exp_callbacks, on_experiment_complete, show_final_plot, close_live_plot)
 
-        # Get experiment-specific arguments
-        axes = (ax_temp, ax_curr, ax_res)
-        lines = (line_temp, line_curr, line_res)
-
-        experiment_args = get_experiment_args_func(
-            output, devices, callbacks, figure, axes, lines
-        )
+        experiment_args = get_experiment_args_func(output, devices, callbacks, live_plot)
 
         # Start experiment in background thread
         experiment_thread = threading.Thread(
@@ -513,6 +492,7 @@ def create_experiment_monitor(
         gui_window.after(100, check_start)
         ```
     """
+
     def check_experiment_start():
         """Monitor for experiment start trigger from GUI."""
         if experiment_started is not None:
@@ -525,10 +505,7 @@ def create_experiment_monitor(
                 start_experiment()
         else:
             # Standard check without experiment_started (CC mode)
-            if (
-                control_vars["experiment_running"].get()
-                and output["sample"] is not None
-            ):
+            if control_vars["experiment_running"].get() and output["sample"] is not None:
                 start_experiment()
 
         gui_window.after(100, check_experiment_start)

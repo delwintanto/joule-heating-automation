@@ -1,152 +1,176 @@
 """Streaming CSV writer with Windows-friendly hidden + advisory lock.
 
-This module implements a small streaming CSV writer that keeps a temporary
+This module implements a streaming CSV writer that keeps a temporary
 ``.partial`` file open during an experiment run and atomically renames it to
 the final CSV when complete. It attempts to set the file hidden attribute on
-Windows and acquires an advisory lock while writing. On POSIX systems the
-module still streams data but without Windows-specific hidden attribute.
+Windows and acquires an advisory lock while writing.
 
-Usage:
-    from joule_heating.data import save_start, save_row, save_finalise
+Usage::
+
+    from joule_heating.data import CsvWriter
+
+    writer = CsvWriter("my_sample")
+    writer.start()
+    writer.row(elapsed, temp, current, voltage, resistance)
+    path = writer.finalise()
 
 Author       : Delwin Tanto
-Last updated : 06 Oct 2025
+Last updated : 09 Mar 2026
 """
 
 import contextlib
 import csv
 import ctypes
-import msvcrt
 import os
 import pathlib
 
-from joule_heating.data import generate_filename
+try:
+    import msvcrt
+except ImportError:  # pragma: no cover - non-Windows fallback
+    msvcrt = None
 
-_STATE = {"fh": None, "writer": None, "tmp_path": None, "final_path": None, "n": 0, "t0": None}
+from .file_name import generate_filename
+
 STREAM_FLUSH_EVERY = 1  # set to 10+ if you want fewer disk writes
 
 
-def save_start(sample_name, tuning=False):
-    """Open a temporary, locked CSV file and write the header row.
+def _set_hidden_attribute(path: pathlib.Path, attribute: int) -> None:
+    """Set a Windows file attribute when the platform supports it."""
+    with contextlib.suppress(AttributeError, OSError):
+        ctypes.windll.kernel32.SetFileAttributesW(str(path), attribute)
 
-    The function creates a final filename via :func:`file_name.generate_filename`,
-    opens a ``.partial`` temporary file for streaming writes, attempts to set the
-    Windows hidden attribute, locks the file, and writes the CSV header row.
+
+def _lock_file(file_handle) -> None:
+    """Apply a Windows advisory lock when ``msvcrt`` is available."""
+    if msvcrt is None:
+        return
+    with contextlib.suppress(OSError):
+        msvcrt.locking(file_handle.fileno(), msvcrt.LK_NBLCK, 0x7FFFFFFF)
+
+
+def _unlock_file(file_handle) -> None:
+    """Release a Windows advisory lock when ``msvcrt`` is available."""
+    if msvcrt is None:
+        return
+    with contextlib.suppress(OSError):
+        msvcrt.locking(file_handle.fileno(), msvcrt.LK_UNLCK, 0x7FFFFFFF)
+
+
+class CsvWriter:
+    """Streaming CSV writer with atomic rename and Windows file locking.
+
+    Each instance manages its own file handle and state, allowing multiple
+    concurrent writers (e.g., tuning data and experiment data).
 
     Args:
         sample_name (str): Sample identifier used to create the filename.
-        tuning (bool): If True the filename will indicate tuning data. Default is False.
-
-    Returns:
-        None
-
-    Note:
-        Opens a file handle kept in module state until :func:`save_finalise` is called.
-        The file remains open for streaming writes throughout the experiment.
+        tuning (bool): If True the filename will indicate tuning data.
     """
-    final_path = pathlib.Path(generate_filename(sample_name, tuning))
-    tmp_path = final_path.with_name(final_path.name + ".partial")
-    tmp_path.parent.mkdir(parents=True, exist_ok=True)
 
-    if _STATE["fh"]:
-        with contextlib.suppress(OSError):
-            save_finalise()
+    def __init__(self, sample_name: str, tuning: bool = False) -> None:
+        self._sample_name = sample_name
+        self._tuning = tuning
+        self._fh = None
+        self._writer = None
+        self._tmp_path = None
+        self._final_path = None
+        self._n = 0
+        self._t0 = None
 
-    # Remove stale .partial file from previous failed run if it exists
-    with contextlib.suppress(OSError, PermissionError):
-        tmp_path.unlink(missing_ok=True)
+    def start(self) -> None:
+        """Open a temporary, locked CSV file and write the header row.
 
-    fh = open(tmp_path, "w", encoding="utf-8-sig", newline="")  # noqa: SIM115
+        Creates a final filename via :func:`file_name.generate_filename`,
+        opens a ``.partial`` temporary file for streaming writes, attempts to set
+        the Windows hidden attribute, locks the file, and writes the CSV header.
 
-    # Hidden attribute (Windows)
-    with contextlib.suppress(OSError):
-        ctypes.windll.kernel32.SetFileAttributesW(str(tmp_path), 0x02)
+        If this writer already has an open file, it is finalised first.
 
-    # Advisory lock for the whole run (Windows)
-    fh.seek(0, os.SEEK_SET)
-    with contextlib.suppress(OSError):
-        msvcrt.locking(fh.fileno(), msvcrt.LK_NBLCK, 0x7FFFFFFF)
+        Returns:
+            None
+        """
+        final_path = pathlib.Path(generate_filename(self._sample_name, self._tuning))
+        tmp_path = final_path.with_name(final_path.name + ".partial")
+        tmp_path.parent.mkdir(parents=True, exist_ok=True)
 
-    w = csv.writer(fh)
+        if self._fh:
+            with contextlib.suppress(OSError):
+                self.finalise()
 
-    # Column header row (order matches your DataFrame usage)
-    w.writerow(["Time (s)", "Temperature (°C)", "Current (A)", "Voltage (V)", "Resistance (Ω)"])
-    fh.flush()
+        # Remove stale .partial file from previous failed run if it exists
+        with contextlib.suppress(OSError, PermissionError):
+            tmp_path.unlink(missing_ok=True)
 
-    _STATE.update(
-        {
-            "fh": fh,
-            "writer": w,
-            "tmp_path": tmp_path,
-            "final_path": final_path,
-            "n": 0,
-            "t0": None,
-        }
-    )
+        fh = open(tmp_path, "w", encoding="utf-8-sig", newline="")  # noqa: SIM115
 
+        # Hidden attribute (Windows)
+        _set_hidden_attribute(tmp_path, 0x02)
 
-def save_row(elapsed_s, t_meas, i_meas, v_meas, r_meas):
-    """Append a measurement row to the open CSV stream.
+        # Advisory lock for the whole run (Windows)
+        fh.seek(0, os.SEEK_SET)
+        _lock_file(fh)
 
-    The first written timestamp is normalised to zero. Rows are flushed to disk
-    every ``STREAM_FLUSH_EVERY`` rows.
+        w = csv.writer(fh)
+        w.writerow(["Time (s)", "Temperature (°C)", "Current (A)", "Voltage (V)", "Resistance (Ω)"])
+        fh.flush()
 
-    Args:
-        elapsed_s (float): Elapsed seconds timestamp (monotonic or wall-clock).
-        t_meas (float): Temperature measurement in °C.
-        i_meas (float): Current measurement in A.
-        v_meas (float): Voltage measurement in V.
-        r_meas (float): Resistance measurement in Ω.
+        self._fh = fh
+        self._writer = w
+        self._tmp_path = tmp_path
+        self._final_path = final_path
+        self._n = 0
+        self._t0 = None
 
-    Returns:
-        None
+    def row(
+        self, elapsed_s: float, t_meas: float, i_meas: float, v_meas: float, r_meas: float
+    ) -> None:
+        """Append a measurement row to the open CSV stream.
 
-    Note:
-        Must be called after :func:`save_start`. If called before initialization,
-        the function silently returns without writing data.
-    """
-    s = _STATE
-    if not s["writer"]:
-        return
+        The first written timestamp is normalised to zero. Rows are flushed to
+        disk every ``STREAM_FLUSH_EVERY`` rows.
 
-    # Normalise so first written timestamp becomes zero
-    if s["t0"] is None:
-        s["t0"] = elapsed_s
-    t_out = elapsed_s - s["t0"]
+        Args:
+            elapsed_s (float): Elapsed seconds timestamp.
+            t_meas (float): Temperature in °C.
+            i_meas (float): Current in A.
+            v_meas (float): Voltage in V.
+            r_meas (float): Resistance in Ω.
 
-    s["writer"].writerow([t_out, t_meas, i_meas, v_meas, r_meas])
-    s["n"] += 1
-    if s["n"] % STREAM_FLUSH_EVERY == 0:
-        s["fh"].flush()
+        Returns:
+            None
+        """
+        if not self._writer:
+            return
 
+        if self._t0 is None:
+            self._t0 = elapsed_s
+        t_out = elapsed_s - self._t0
 
-def save_finalise():
-    """Finalize the stream: unlock, close and atomically rename temporary file.
+        self._writer.writerow([t_out, t_meas, i_meas, v_meas, r_meas])
+        self._n += 1
+        if self._n % STREAM_FLUSH_EVERY == 0:
+            self._fh.flush()
 
-    Returns:
-        str or None: The final CSV path if a file was finalised, otherwise None.
-    """
-    s = _STATE
-    if not s["fh"]:
-        return None
-    try:
-        with contextlib.suppress(OSError):
-            msvcrt.locking(s["fh"].fileno(), msvcrt.LK_UNLCK, 0x7FFFFFFF)
-        s["fh"].close()
-        os.replace(s["tmp_path"], s["final_path"])
+    def finalise(self) -> str | None:
+        """Finalize the stream: unlock, close and atomically rename.
 
-        # Remove Hidden attribute (Windows)
-        with contextlib.suppress(OSError):
-            ctypes.windll.kernel32.SetFileAttributesW(str(s["final_path"]), 0x80)
-        return str(s["final_path"])
-    finally:
-        _STATE.update(
-            {
-                "fh": None,
-                "writer": None,
-                "tmp_path": None,
-                "final_path": None,
-                "n": 0,
-                "t0": None,
-            }
-        )
+        Returns:
+            str or None: The final CSV path if a file was finalised, otherwise None.
+        """
+        if not self._fh:
+            return None
+        try:
+            _unlock_file(self._fh)
+            self._fh.close()
+            os.replace(self._tmp_path, self._final_path)
+
+            # Remove Hidden attribute (Windows)
+            _set_hidden_attribute(self._final_path, 0x80)
+            return str(self._final_path)
+        finally:
+            self._fh = None
+            self._writer = None
+            self._tmp_path = None
+            self._final_path = None
+            self._n = 0
+            self._t0 = None

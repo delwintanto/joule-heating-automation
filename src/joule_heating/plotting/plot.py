@@ -7,8 +7,23 @@ Last updated : 04 Nov 2025
 
 import contextlib
 import math
+from typing import Any, NamedTuple
 
 import matplotlib.pyplot as plt
+
+
+class LivePlot(NamedTuple):
+    """Container for matplotlib live plot objects.
+
+    Attributes:
+        fig: Matplotlib Figure object.
+        axes: Tuple of (ax_temp, ax_current, ax_resistance) Axes.
+        lines: Tuple of (line_temp, line_current, line_resistance) Line2D objects.
+    """
+
+    fig: object
+    axes: tuple
+    lines: tuple
 
 
 def _plot_set_position(position):
@@ -40,7 +55,7 @@ def _is_finite_number(x):
         return False
 
 
-def live_plot_init(sample_name, position="+30+30"):
+def live_plot_init(sample_name: str, position: str = "+30+30") -> "LivePlot":
     """Initialise the figure and axes for live plotting.
 
     Creates a matplotlib figure with three overlaid y-axes for temperature,
@@ -53,10 +68,8 @@ def live_plot_init(sample_name, position="+30+30"):
             Default is "+30+30".
 
     Returns:
-        tuple: (fig, ax1, ax2, ax3, line1, line2, line3) where:
-            - fig: Matplotlib Figure object
-            - ax1, ax2, ax3: Axes for temperature, current, and resistance
-            - line1, line2, line3: Line2D objects for updating data
+        LivePlot: Named tuple with ``fig`` (Figure), ``axes`` (tuple of 3 Axes for
+            temperature, current, and resistance), and ``lines`` (tuple of 3 Line2D objects).
     """
     fig, ax1 = plt.subplots(figsize=(8.2, 4))
     plt.get_current_fig_manager().set_window_title("Live Plot")
@@ -85,74 +98,26 @@ def live_plot_init(sample_name, position="+30+30"):
     plt.show(block=False)
     _plot_set_position(position)
 
-    return fig, ax1, ax2, ax3, lines[0], lines[1], lines[2]
+    return LivePlot(fig, (ax1, ax2, ax3), (lines[0], lines[1], lines[2]))
 
 
-def live_plot_updt(
-    fig,
-    ax1,
-    ax2,
-    ax3,
-    line1,
-    line2,
-    line3,
-    x,
-    y1,
-    y2,
-    y3,
-):
+def live_plot_update(
+    live_plot: "LivePlot",
+    *,
+    data: dict | None = None,
+    x: list | None = None,
+    y1: list | None = None,
+    y2: list | None = None,
+    y3: list | None = None,
+) -> None:
     """Update the live plot with the latest experiment data.
 
-    Args:
-        fig (Figure): Matplotlib figure.
-        ax1 (Axes): Axis for temperature.
-        ax2 (Axes): Axis for current.
-        ax3 (Axes): Axis for resistance.
-        line1 (Line2D): Temperature line.
-        line2 (Line2D): Current line.
-        line3 (Line2D): Resistance line.
-        x (list): Time values.
-        y1 (list): Temperature values.
-        y2 (list): Current values.
-        y3 (list): Resistance values.
-
-    Returns:
-        None
-    """
-    for line, y in zip((line1, line2, line3), (y1, y2, y3)):
-        line.set_data(x, y)  # Update the data for each line
-
-    # Ensure x-axis scales dynamically
-    if len(x) > 1:
-        if len(x) > 500:
-            ax1.set_xlim(x[-500], x[-1])
-        else:
-            ax1.set_xlim(x[0], x[-1])
-    else:
-        ax1.set_xlim(0, 1)
-
-    for ax, y in zip([ax1, ax2, ax3], [y1, y2, y3]):
-        valid_y = [val for val in y if _is_finite_number(val)]
-        if valid_y:  # Make sure data is not empty
-            ymin, ymax = min(valid_y), max(valid_y)
-            padding = 0.05 * (ymax - ymin) if ymax != ymin else 1
-            ax.set_ylim(ymin - padding, ymax + padding)
-
-    fig.canvas.draw()
-    fig.canvas.flush_events()
-
-
-def update_live_plot(fig, axes, lines, data=None, x=None, y1=None, y2=None, y3=None):
-    """Flexible wrapper to update the live plot from either a data dict or lists.
-
-    This helper accepts either a `data` dictionary with keys ``'time'``,
-    ``'temperature'``, ``'current'`` and ``'resistance'`` or explicit lists
-    passed as `x`, `y1`, `y2`, `y3`.
+    Accepts either a ``data`` dictionary with keys ``'time'``,
+    ``'temperature'``, ``'current'`` and ``'resistance'``, or explicit
+    lists via ``x``, ``y1``, ``y2``, ``y3``.
 
     Args:
-        fig: Matplotlib figure.
-        axes: Tuple of three Axes objects (temp, current, resistance).
-        lines: Tuple of three Line2D objects corresponding to the axes.
+        live_plot (LivePlot): Live plot container (fig, axes, lines).
         data (dict, optional): Source data dictionary (preferred for experiments).
         x, y1, y2, y3 (list, optional): Explicit lists for time, temp, current, resistance.
 
@@ -168,22 +133,38 @@ def update_live_plot(fig, axes, lines, data=None, x=None, y1=None, y2=None, y3=N
     if any(v is None for v in (x, y1, y2, y3)):
         raise ValueError("Either provide `data` or all of x, y1, y2, y3")
 
-    live_plot_updt(
-        fig,
-        axes[0],
-        axes[1],
-        axes[2],
-        lines[0],
-        lines[1],
-        lines[2],
-        x,
-        y1,
-        y2,
-        y3,
-    )
+    fig, axes, lines = live_plot
+
+    for line, y in zip(lines, (y1, y2, y3), strict=True):
+        line.set_data(x, y)
+
+    # Ensure x-axis scales dynamically
+    ax1 = axes[0]
+    if len(x) > 1:
+        if len(x) > 500:
+            ax1.set_xlim(x[-500], x[-1])
+        else:
+            ax1.set_xlim(x[0], x[-1])
+    else:
+        ax1.set_xlim(0, 1)
+
+    for ax, y in zip(axes, (y1, y2, y3), strict=True):
+        valid_y = [val for val in y if _is_finite_number(val)]
+        if valid_y:
+            ymin, ymax = min(valid_y), max(valid_y)
+            padding = 0.05 * (ymax - ymin) if ymax != ymin else 1
+            ax.set_ylim(ymin - padding, ymax + padding)
+
+    fig.canvas.draw()
+    fig.canvas.flush_events()
 
 
-def plot_data(df, columns=None, sample_name=None, position="+30+30"):
+def plot_data(
+    df: Any,
+    columns: list[str] | None = None,
+    sample_name: str | None = None,
+    position: str = "+30+30",
+) -> None:
     """Plot time-series data from a Joule heating experiment.
 
     Args:
@@ -197,8 +178,7 @@ def plot_data(df, columns=None, sample_name=None, position="+30+30"):
         None
     """
     if columns is None:
-        columns = ["Temperature (°C)", "Voltage (V)",
-                   "Current (A)", "Resistance (Ω)"]
+        columns = ["Temperature (°C)", "Voltage (V)", "Current (A)", "Resistance (Ω)"]
 
     colour_map = {
         "Temperature (°C)": "#C00000",
@@ -211,7 +191,7 @@ def plot_data(df, columns=None, sample_name=None, position="+30+30"):
     _plot_set_position(position)  # Position the window
 
     # Plot data against time
-    for ax, column in zip(axes, columns):
+    for ax, column in zip(axes, columns, strict=True):
         ax.plot(df["Time (s)"], df[column], color=colour_map.get(column, "k"))
         ax.set_ylabel(column, fontsize=9)
         ax.spines[["top", "right"]].set_visible(False)
@@ -229,7 +209,7 @@ def plot_data(df, columns=None, sample_name=None, position="+30+30"):
     plt.show(block=True)
 
 
-def close_plot():
+def close_plot() -> None:
     """Close the current matplotlib figure.
 
     Returns:

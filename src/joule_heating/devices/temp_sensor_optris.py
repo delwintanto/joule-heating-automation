@@ -44,9 +44,9 @@ def optris_open(port=None, baud=115200):
     Open and return a serial connection to the Optris sensor.
 
     Args:
-        port: Explicit COM port (e.g., 'COM10'). If None, the function looks up
-              the port by HWID using 'find_port_by_hwid(HWID_SUBSTR)'.
-        baud: Baud rate to use (default is DEFAULT_BAUD defined above).
+        port (str, optional): Explicit COM port (e.g., ``'COM10'``). If ``None``,
+            discovers the port automatically by HWID substring.
+        baud (int): Baud rate to use (default is 115200).
 
     Returns:
         An open 'serial.Serial' instance configured for 8N1.
@@ -75,8 +75,7 @@ def optris_open(port=None, baud=115200):
         print(f"Optris sensor is initialised on port {port}.")
         return temp_sensor
     except serial.SerialException as e:
-        raise TemperatureSensorError(
-            f"Failed to initialise Optris sensor: {e}") from e
+        raise TemperatureSensorError(f"Failed to initialise Optris sensor: {e}") from e
 
 
 # -------------------- Write commands --------------------
@@ -128,8 +127,7 @@ def _optris_write_word_2byte(temp_sensor, cmd, value_u16, checksum=CHECKSUM):
     temp_sensor.write(frame)
     data = temp_sensor.read(2)
     if len(data) != 2:
-        raise TemperatureSensorError(
-            f"Expected 2 bytes after SET, received {len(data)}")
+        raise TemperatureSensorError(f"Expected 2 bytes after SET, received {len(data)}")
     return (data[0] << 8) | data[1]
 
 
@@ -160,8 +158,7 @@ def _optris_write_word_1byte(temp_sensor, cmd, value, checksum=CHECKSUM):
     temp_sensor.write(frame)
     data = temp_sensor.read(1)
     if len(data) != 1:
-        raise TemperatureSensorError(
-            f"Expected 1 byte after SET, received {len(data)}")
+        raise TemperatureSensorError(f"Expected 1 byte after SET, received {len(data)}")
     return data[0]
 
 
@@ -186,8 +183,7 @@ def optris_set_emissivity(temp_sensor, *, emissivity, checksum=CHECKSUM):
     if not 0.0 <= emissivity <= 1.0:
         raise TemperatureSensorError("Emissivity must be between 0 and 1")
     raw = int(round(emissivity * 1000))
-    echoed = _optris_write_word_2byte(
-        temp_sensor, 0x84, raw, checksum)  # SET emissivity
+    echoed = _optris_write_word_2byte(temp_sensor, 0x84, raw, checksum)  # SET emissivity
     return echoed / 1000.0
 
 
@@ -212,8 +208,7 @@ def optris_set_transmission(temp_sensor, *, transmission, checksum=CHECKSUM):
     if not 0.0 <= transmission <= 1.0:
         raise TemperatureSensorError("Transmission must be between 0 and 1")
     raw = int(round(transmission * 1000))
-    echoed = _optris_write_word_2byte(
-        temp_sensor, 0x85, raw, checksum)  # SET transmission
+    echoed = _optris_write_word_2byte(temp_sensor, 0x85, raw, checksum)  # SET transmission
     return echoed / 1000.0
 
 
@@ -256,8 +251,7 @@ def optris_set_avg_time(temp_sensor, *, avg_time, checksum=CHECKSUM):
     if not 0.0 <= avg_time <= 6553.5:
         raise TemperatureSensorError("avg_time must be between 0.0 and 6553.5")
     raw = int(round(avg_time * 10))
-    echoed = _optris_write_word_2byte(
-        temp_sensor, 0x86, raw, checksum)  # SET averaging time
+    echoed = _optris_write_word_2byte(temp_sensor, 0x86, raw, checksum)  # SET averaging time
     return echoed / 10.0
 
 
@@ -369,8 +363,7 @@ def optris_read_process_temp(temp_sensor):
     Returns:
         float: Temperature in degrees Celsius.
     """
-    raw = _optris_read_word_2byte(
-        temp_sensor, 0x01)  # READ proccess temperature
+    raw = _optris_read_word_2byte(temp_sensor, 0x01)  # READ proccess temperature
     return (raw - 1000) / 10.0
 
 
@@ -539,27 +532,17 @@ if __name__ == "__main__":
         # optris_set_lock(optris_sensor, lock=True)  # Lock panel keys
         # optris_set_lock(optris_sensor, lock=False)  # Unlock panel keys
 
+        print(f"Emissivity          : {optris_read_emissivity(optris_sensor):.3f}")
+        print(f"Transmission        : {optris_read_transmission(optris_sensor):.3f}")
+        print(f"Process temperature : {optris_read_process_temp(optris_sensor):.1f} °C")
+        print(f"Head temperature    : {optris_read_head_temp(optris_sensor):.1f} °C")
+        print(f"Box temperature     : {optris_read_box_temp(optris_sensor):.1f} °C")
+        print(f"Actual temperature  : {optris_read_actual_temp(optris_sensor):.1f} °C")
+        print(f"Laser status        : {'ON' if optris_read_laser(optris_sensor) else 'OFF'}")
+        print(f"Avg time            : {optris_read_avg_time(optris_sensor):.1f} s")
+        print(f"Avg mode            : {'ON' if optris_read_avg_mode(optris_sensor) else 'OFF'}")
         print(
-            f"Emissivity          : {optris_read_emissivity(optris_sensor):.3f}")
-        print(
-            f"Transmission        : {optris_read_transmission(optris_sensor):.3f}")
-        print(
-            f"Process temperature : {optris_read_process_temp(optris_sensor):.1f} °C")
-        print(
-            f"Head temperature    : {optris_read_head_temp(optris_sensor):.1f} °C")
-        print(
-            f"Box temperature     : {optris_read_box_temp(optris_sensor):.1f} °C")
-        print(
-            f"Actual temperature  : {optris_read_actual_temp(optris_sensor):.1f} °C")
-        print(
-            f"Laser status        : {'ON' if optris_read_laser(optris_sensor) else 'OFF'}")
-        print(
-            f"Avg time            : {optris_read_avg_time(optris_sensor):.1f} s")
-        print(
-            f"Avg mode            : {'ON' if optris_read_avg_mode(optris_sensor) else 'OFF'}")
-        print(
-            f"Panel lock          : "
-            f"{'LOCKED' if optris_read_lock(optris_sensor) else 'UNLOCKED'}"
+            f"Panel lock          : {'LOCKED' if optris_read_lock(optris_sensor) else 'UNLOCKED'}"
         )
     finally:
         optris_sensor.close()
