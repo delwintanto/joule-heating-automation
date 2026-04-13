@@ -514,7 +514,6 @@ def run_experiment_thread(
     kd,
     tuning_time,
     tuning_method,
-    started_flag,
     stop_event,
     callbacks,
     on_experiment_complete_callback,
@@ -537,7 +536,6 @@ def run_experiment_thread(
         kd (float): PID derivative gain.
         tuning_time (int): Auto-tuning duration.
         tuning_method (str): "Auto tuning" or "Manual tuning".
-        started_flag (list): Single-element list acting as flag to prevent multiple runs.
         stop_event (threading.Event): Event set on SIGINT to request skip/stop.
         callbacks (ExperimentCallbacks): Experiment control callbacks.
         on_experiment_complete_callback (callable): Function to call when experiment finishes.
@@ -623,7 +621,6 @@ def run_experiment_thread(
         # Re-enable GUI after experiment completes
         if on_experiment_complete_callback:
             on_experiment_complete_callback()
-        started_flag[0] = False
 
 
 # -------------------- Main Program --------------------
@@ -694,7 +691,6 @@ def main():
                 exp_output.get("kd", 0.1),
                 exp_output.get("tuning_time", 0),
                 exp_output.get("tuning_method", "Manual tuning"),
-                experiment_started,
                 stop_event,
                 callbacks,
                 cb_complete,
