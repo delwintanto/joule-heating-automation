@@ -376,7 +376,14 @@ def gui_pid(psu=None, ycr=None, optris=None):
                 + check_empty_fields(
                     {k: pid_vars[k] for k in ("Kp", "Ki", "Kd")}
                     if tuning_mode.get() == 1
-                    else {k: pid_vars[k] for k in ("Tuning Duration (s)", "Tuning Setpoint (\u00b0C)", "Tuning Hysteresis (\u00b0C)")}
+                    else {
+                        k: pid_vars[k]
+                        for k in (
+                            "Tuning Duration (s)",
+                            "Tuning Setpoint (\u00b0C)",
+                            "Tuning Hysteresis (\u00b0C)",
+                        )
+                    }
                 )
             )
 

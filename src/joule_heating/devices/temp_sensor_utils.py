@@ -85,7 +85,9 @@ def read_temperature(ycr_sensor: Any, optris_sensor: Any) -> float:
             return t_ycr
         # YCR returned NaN — transient failure or below its range
         _ycr_state["nan_streak"] += 1
-        if _ycr_state["nan_streak"] <= _YCR_HOLDOVER_COUNT and not math.isnan(_ycr_state["last_temp"]):
+        if _ycr_state["nan_streak"] <= _YCR_HOLDOVER_COUNT and not math.isnan(
+            _ycr_state["last_temp"]
+        ):
             return _ycr_state["last_temp"]  # Hold last valid YCR reading briefly
 
     # Fall back to Optris (YCR unavailable, persistent failure, or no holdover value)
