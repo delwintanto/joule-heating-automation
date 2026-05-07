@@ -22,6 +22,7 @@ Author       : Delwin Tanto
 Last updated : 10 Mar 2026
 """
 
+import math
 import time
 from datetime import datetime
 from tkinter import messagebox
@@ -172,9 +173,14 @@ def run_djs_cc(
 
         # Collect data during the experiment
         next_tick = time.monotonic()
-        while next_tick <= end_time:
+        while True:
             try:
                 time_now = time.monotonic()
+
+                # End this step using real monotonic time, not scheduled tick time.
+                if time_now >= end_time:
+                    break
+
                 next_tick += LOOP_INTERVAL
 
                 # Check if skip was requested via GUI callback or SIGINT
@@ -220,7 +226,7 @@ def run_djs_cc(
                         resistance=(
                             f"{m.resistance:.2f} Ω" if m.resistance != float("inf") else "∞ Ω"
                         ),
-                        time_remaining=f"{max(0, int(end_time - time_now))} s remaining",
+                        time_remaining=f"{max(0, math.ceil(end_time - time_now))} s remaining",
                     )
 
                 time.sleep(max(0, next_tick - time.monotonic()))
@@ -235,6 +241,9 @@ def run_djs_cc(
         # Full stop requested - exit all remaining heating steps
         if callbacks.skip_check and callbacks.skip_check():
             break
+
+    # Ensure output is disabled when heating phase ends.
+    etm_set_onoff(devices.power_supply, on=False)
 
     print(f"[{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}] Heating completed!")
     return time_start, data
