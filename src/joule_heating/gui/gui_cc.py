@@ -153,6 +153,7 @@ def gui_cc(psu=None, ycr=None, optris=None):
     control_vars = {
         "skip_requested": tk.BooleanVar(value=False),
         "stop_requested": tk.BooleanVar(value=False),
+        "start_requested": tk.BooleanVar(value=False),
         "experiment_running": tk.BooleanVar(value=False),
         "skip_button": None,  # Will be set when button is created
         "stop_button": None,  # Will be set when button is created
@@ -205,6 +206,7 @@ def gui_cc(psu=None, ycr=None, optris=None):
                 return
 
             # Set experiment running state
+            control_vars["start_requested"].set(True)
             control_vars["experiment_running"].set(True)
 
             # Disable all input fields
@@ -434,6 +436,7 @@ def create_experiment_complete_callback_cc(
 
             # Reset stop and laser state
             control_vars["stop_requested"].set(False)
+            control_vars["start_requested"].set(False)
             control_vars["lasers_on"][0] = False
             control_vars["laser_button"].config(style="TButton")
 

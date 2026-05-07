@@ -415,10 +415,16 @@ def create_experiment_starter(
         if not control_vars["experiment_running"].get():
             return
 
+        start_requested = control_vars.get("start_requested")
+        if start_requested is not None and not start_requested.get():
+            return
+
         # Prevent starting multiple experiments
         if experiment_started[0]:
             return
         experiment_started[0] = True
+        if start_requested is not None:
+            start_requested.set(False)
 
         # Enable skip button
         control_vars["skip_button"].config(state="normal")
@@ -495,17 +501,25 @@ def create_experiment_monitor(
 
     def check_experiment_start():
         """Monitor for experiment start trigger from GUI."""
+        start_requested = control_vars.get("start_requested")
+        requested = start_requested.get() if start_requested is not None else True
+
         if experiment_started is not None:
             # Include experiment_started check (PID mode)
             if (
                 control_vars["experiment_running"].get()
                 and output["sample"] is not None
+                and requested
                 and not experiment_started[0]
             ):
                 start_experiment()
         else:
             # Standard check without experiment_started (CC mode)
-            if control_vars["experiment_running"].get() and output["sample"] is not None:
+            if (
+                control_vars["experiment_running"].get()
+                and output["sample"] is not None
+                and requested
+            ):
                 start_experiment()
 
         gui_window.after(100, check_experiment_start)

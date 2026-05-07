@@ -181,6 +181,18 @@ def gui_pid(psu=None, ycr=None, optris=None):
             "Note: longer tuning time will result in "
             "increased temperature with diminishing return.",
         ),
+        "Tuning Setpoint (\u00b0C)": (
+            tk.StringVar(),
+            "Target temperature for the relay feedback test.\n"
+            "Set this to roughly your intended operating temperature.",
+        ),
+        "Tuning Hysteresis (\u00b0C)": (
+            tk.StringVar(),
+            "Half-width of the relay switching band (\u00b0C).\n"
+            "Relay turns ON when T < setpoint \u2212 hysteresis,\n"
+            "OFF when T > setpoint + hysteresis.\n"
+            "Typical range: 5\u201320 \u00b0C.",
+        ),
     }
 
     field_widgets = {}  # Store references to all field widgets
@@ -250,7 +262,11 @@ def gui_pid(psu=None, ycr=None, optris=None):
             draw_fields({k: pid_vars[k] for k in ("Kp", "Ki", "Kd")}, dynamic_row.next(3))
         else:
             draw_fields(
-                {"Tuning Duration (s)": pid_vars["Tuning Duration (s)"]},
+                {
+                    "Tuning Duration (s)": pid_vars["Tuning Duration (s)"],
+                    "Tuning Setpoint (\u00b0C)": pid_vars["Tuning Setpoint (\u00b0C)"],
+                    "Tuning Hysteresis (\u00b0C)": pid_vars["Tuning Hysteresis (\u00b0C)"],
+                },
                 dynamic_row.next(),
             )
 
@@ -318,6 +334,7 @@ def gui_pid(psu=None, ycr=None, optris=None):
     control_vars = {
         "skip_requested": tk.BooleanVar(value=False),
         "stop_requested": tk.BooleanVar(value=False),
+        "start_requested": tk.BooleanVar(value=False),
         "experiment_running": tk.BooleanVar(value=False),
         "skip_button": None,  # Will be set when button is created
         "stop_button": None,  # Will be set when button is created
@@ -343,6 +360,8 @@ def gui_pid(psu=None, ycr=None, optris=None):
         "kd": None,
         "tuning_time": None,
         "tuning_method": None,
+        "t_set": None,
+        "hysteresis": None,
     }
 
     def start():
@@ -357,7 +376,7 @@ def gui_pid(psu=None, ycr=None, optris=None):
                 + check_empty_fields(
                     {k: pid_vars[k] for k in ("Kp", "Ki", "Kd")}
                     if tuning_mode.get() == 1
-                    else {"Tuning Duration (s)": pid_vars["Tuning Duration (s)"]}
+                    else {k: pid_vars[k] for k in ("Tuning Duration (s)", "Tuning Setpoint (\u00b0C)", "Tuning Hysteresis (\u00b0C)")}
                 )
             )
 
@@ -415,6 +434,17 @@ def gui_pid(psu=None, ycr=None, optris=None):
                 output["tuning_method"] = "Manual tuning"
             else:
                 output["tuning_time"] = float(pid_vars["Tuning Duration (s)"][0].get())
+                output["t_set"] = float(pid_vars["Tuning Setpoint (\u00b0C)"][0].get())
+                output["hysteresis"] = float(pid_vars["Tuning Hysteresis (\u00b0C)"][0].get())
+                if output["tuning_time"] <= 0:
+                    raise ValueError("Tuning duration must be positive.")
+                if output["hysteresis"] < 1:
+                    raise ValueError("Tuning hysteresis must be at least 1\u00b0C.")
+                if output["t_set"] < 50:
+                    raise ValueError(
+                        "Tuning setpoint must be at least 50\u00b0C. "
+                        "Check that you have not accidentally entered a PID gain value here."
+                    )
                 output["tuning_method"] = "Auto tuning"
 
             # Confirms before starting the experiment
@@ -433,6 +463,7 @@ def gui_pid(psu=None, ycr=None, optris=None):
                 return
 
             # Set experiment running state
+            control_vars["start_requested"].set(True)
             control_vars["experiment_running"].set(True)
 
             # Disable all input fields
@@ -690,6 +721,7 @@ def create_experiment_complete_callback_pid(
 
             # Reset stop and laser state
             control_vars["stop_requested"].set(False)
+            control_vars["start_requested"].set(False)
             control_vars["lasers_on"][0] = False
             control_vars["laser_button"].config(style="TButton")
 

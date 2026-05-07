@@ -35,13 +35,38 @@ from .exceptions import TemperatureSensorError
 from .temp_sensor_optris import optris_read_actual_temp
 from .temp_sensor_ycr import ycr_read_temp
 
+# Hysteresis for sensor switching.
+# Once YCR has been returning valid readings, hold the last valid YCR reading
+# for up to this many consecutive NaN reads before falling back to Optris.
+# This prevents a transient Modbus timeout (e.g., from EMI during heating)
+# from causing a permanent switch to the Optris 400°C cap.
+_YCR_HOLDOVER_COUNT = 2
+# Mutable container so state can be mutated from nested functions without `global`
+_ycr_state = {"nan_streak": 0, "last_temp": float("nan")}
+
+
+def reset_temperature_reader() -> None:
+    """Reset sensor-switching state between experiments.
+
+    Clears the cached YCR reading and NaN streak counter so that stale
+    state from a previous experiment does not affect the next one.
+    Call this at the start of each new experiment run.
+    """
+    _ycr_state["nan_streak"] = 0
+    _ycr_state["last_temp"] = float("nan")
+
 
 def read_temperature(ycr_sensor: Any, optris_sensor: Any) -> float:
     """Read temperature from the appropriate sensor.
 
-    If temperature is below YCR's minimum operating range (300°C), use Optris.
-    Otherwise, use YCR for better accuracy at higher temperatures.
-    Handles None sensors gracefully (skips unavailable sensors).
+    Tries YCR first. If YCR returns a valid (non-NaN) reading, it is used
+    and the NaN streak counter resets. If YCR returns NaN for up to
+    ``_YCR_HOLDOVER_COUNT`` consecutive reads, the last valid YCR reading is
+    held and returned instead of falling back to Optris — this prevents a
+    brief Modbus timeout (e.g. from EMI during high-current heating) from
+    causing the Optris 400°C saturation limit to reach the PID controller.
+    After more than ``_YCR_HOLDOVER_COUNT`` consecutive NaN reads, or when no
+    valid YCR reading has ever been seen, falls back to Optris.
 
     Args:
         ycr_sensor (minimalmodbus.Instrument or None): YCR IR sensor instance,
@@ -52,22 +77,22 @@ def read_temperature(ycr_sensor: Any, optris_sensor: Any) -> float:
     Returns:
         float: Temperature in °C. Returns NaN if all sensors are None or fail.
     """
-    # Try YCR sensor first (if available)
     if ycr_sensor is not None:
-        try:
-            t_ycr = ycr_read_temp(ycr_sensor)
-            # If YCR reading is valid and above its minimum range, use it
-            if not math.isnan(t_ycr):
-                return t_ycr
-        except TemperatureSensorError:
-            pass
+        t_ycr = ycr_read_temp(ycr_sensor)
+        if not math.isnan(t_ycr):
+            _ycr_state["nan_streak"] = 0
+            _ycr_state["last_temp"] = t_ycr
+            return t_ycr
+        # YCR returned NaN — transient failure or below its range
+        _ycr_state["nan_streak"] += 1
+        if _ycr_state["nan_streak"] <= _YCR_HOLDOVER_COUNT and not math.isnan(_ycr_state["last_temp"]):
+            return _ycr_state["last_temp"]  # Hold last valid YCR reading briefly
 
-    # Fall back to Optris for low temperatures or if YCR fails/unavailable
+    # Fall back to Optris (YCR unavailable, persistent failure, or no holdover value)
     if optris_sensor is not None:
         try:
             return optris_read_actual_temp(optris_sensor)
         except TemperatureSensorError:
             pass
 
-    # Both sensors unavailable or failed
     return float("nan")

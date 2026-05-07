@@ -117,8 +117,24 @@ def detect_peaks_and_valleys(
         t = t[start_idx:]
         temperature = temperature[start_idx:]
 
-    # Smooth the temperature data
-    temp_smooth = savgol_filter(temperature, window_length=window, polyorder=polyorder)
+    # Smooth the temperature data — window must not exceed the number of samples
+    effective_window = min(window, len(temperature))
+    if effective_window % 2 == 0:  # savgol_filter requires odd window length
+        effective_window = max(1, effective_window - 1)
+    if effective_window <= polyorder:
+        # Not enough data to fit the polynomial — return empty results
+        empty = np.array([], dtype=int)
+        return {
+            "combined_maxima": empty,
+            "combined_minima": empty,
+            "temp_smooth": temperature,
+            "gradient": np.zeros_like(temperature),
+            "time": t,
+            "temperature": temperature,
+            "peak_valley_pairs": [],
+            "start_idx": start_idx,
+        }
+    temp_smooth = savgol_filter(temperature, window_length=effective_window, polyorder=polyorder)
     gradient = np.gradient(temp_smooth, t)
 
     # Detect peaks and valleys directly from smoothed temperature

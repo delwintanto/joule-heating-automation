@@ -32,7 +32,7 @@ from .power_supply_etm import (
     etm_set_onoff,
     etm_set_voltage,
 )
-from .temp_sensor_utils import read_temperature
+from .temp_sensor_utils import read_temperature, reset_temperature_reader
 
 __all__ = [
     "Devices",
@@ -50,4 +50,5 @@ __all__ = [
     "PSUError",
     "TemperatureSensorError",
     "read_temperature",
+    "reset_temperature_reader",
 ]

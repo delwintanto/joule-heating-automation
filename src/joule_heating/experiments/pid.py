@@ -43,6 +43,7 @@ from joule_heating.devices import (
     etm_set_voltage,
     init_devices,
     read_temperature,
+    reset_temperature_reader,
 )
 from joule_heating.gui import (
     create_experiment_complete_callback_pid,
@@ -77,6 +78,8 @@ def auto_tune_pid(
     devices,
     tuning_durr,
     i_set,
+    t_set,
+    hysteresis,
     v_set,
     lp_time,
     lp_temp,
@@ -85,13 +88,16 @@ def auto_tune_pid(
     stop_event,
     callbacks=ExperimentCallbacks(),
 ):
-    """Tune PID parameters using relay feedback (Ziegler–Nichols method).
+    """Tune PID parameters using relay feedback (Åström-Hägglund method).
 
     Args:
         sample_name (str): Name of the sample.
         devices (Devices): Device handles container.
         tuning_durr (int): Tuning duration in seconds.
-        i_set (float): Maximum current limit in amperes.
+        i_set (float): Maximum current (relay ON level) in amperes.
+        t_set (float): Relay setpoint temperature (°C). Relay switches around this value.
+        hysteresis (float): Half-width of the relay switching band (°C).
+            Relay turns ON when T < t_set − hysteresis, OFF when T > t_set + hysteresis.
         v_set (float): Voltage setting in volts.
         lp_time, lp_temp, lp_curr, lp_res (list): Data buffers for live plot.
         stop_event (threading.Event): Event set on SIGINT to request skip/stop.
@@ -113,14 +119,17 @@ def auto_tune_pid(
 
     print(
         f"[{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}] "
-        f"Starting Relay Feedback Test for {tuning_durr} s. "
+        f"Starting Relay Feedback Test for {tuning_durr} s "
+        f"(setpoint: {t_set}°C \u00b1 {hysteresis}°C). "
         "\033[1;31mDO NOT TOUCH!\033[0m!"
     )
 
-    # Step 1: Apply an alternating current and records the temperature oscillations
-    switch_interval = 5  # Seconds to switch between high and low current
+    # Step 1: Apply temperature-threshold relay and record temperature oscillations
+    relay_on = True  # Start relay ON to heat towards setpoint
     time_start = time.monotonic()
     max_temperature = 0.0  # Track maximum temperature reached
+    reset_temperature_reader()  # Clear stale sensor state from previous run
+    last_plot_time = time.monotonic()
 
     try:
         etm_set_voltage(devices.power_supply, voltage=v_set)
@@ -142,10 +151,17 @@ def auto_tune_pid(
                 stop_event.clear()
                 break
 
-            # Alternate between high and low current
-            i_read = i_set if int(elapsed / switch_interval) % 2 == 0 else 0
-            etm_set_current(devices.power_supply, current=i_read)
             t_read = read_temperature(devices.ycr_sensor, devices.optris_sensor)
+
+            # Temperature-threshold relay (Åström-Hägglund method)
+            if t_read == t_read:  # NaN check before relay decision
+                if relay_on and t_read > t_set + hysteresis:
+                    relay_on = False
+                elif not relay_on and t_read < t_set - hysteresis:
+                    relay_on = True
+
+            i_read = i_set if relay_on else 0
+            etm_set_current(devices.power_supply, current=i_read)
             v_read = etm_read_voltage(devices.power_supply)
             r_read = v_read / i_read if i_read != 0 else float("inf")
 
@@ -176,13 +192,14 @@ def auto_tune_pid(
             lp_curr.append(i_read)
             lp_res.append(r_read)
 
-            if callbacks.update_plot:
+            if callbacks.update_plot and time.monotonic() - last_plot_time >= 0.2:
                 callbacks.update_plot(
                     time_data=list(lp_time),
                     temp_data=list(lp_temp),
                     curr_data=list(lp_curr),
                     res_data=list(lp_res),
                 )
+                last_plot_time = time.monotonic()
 
             tuning_writer.row(elapsed, t_read, i_read, v_read, r_read)
             time.sleep(max(0, next_tick - time.monotonic()))
@@ -193,11 +210,20 @@ def auto_tune_pid(
     print("Calculating PID gains...")
 
     # Step 2: Find the oscillation period (Tu) and ultimate gain (Ku)
-    tuning_data = ga.detect_peaks_and_valleys(lp_time, lp_temp)
-    period = ga.calculate_period(tuning_data["combined_maxima"], lp_time)
-    amplitude = ga.calculate_amplitude(
-        tuning_data["combined_maxima"], tuning_data["combined_minima"], lp_time, lp_temp
-    )
+    min_tuning_samples = 50  # Require at least 50 samples (~5 s at 0.1 s interval)
+    if len(lp_time) < min_tuning_samples:
+        print(
+            f"\033[1;33mWarning: Only {len(lp_time)} samples collected during tuning "
+            f"(need at least {min_tuning_samples}). "
+            "Tuning duration is too short — increase it and try again.\033[0m"
+        )
+        amplitude, period = None, None
+    else:
+        tuning_data = ga.detect_peaks_and_valleys(lp_time, lp_temp)
+        period = ga.calculate_period(tuning_data["combined_maxima"], lp_time)
+        amplitude = ga.calculate_amplitude(
+            tuning_data["combined_maxima"], tuning_data["combined_minima"], lp_time, lp_temp
+        )
 
     if amplitude and period:
         ku = (4 * i_set) / (3.141592653589793 * amplitude)
@@ -253,6 +279,8 @@ def run_djs_pid(
     temp_sp,
     durr_sp,
     i_set,
+    t_set,
+    hysteresis,
     v_set,
     cooldown_dur,
     tuning,
@@ -269,6 +297,8 @@ def run_djs_pid(
         temp_sp (list): Temperature setpoints.
         durr_sp (list): Durations for each setpoint.
         i_set (float): Max current in A.
+        t_set (float): Relay feedback setpoint temperature in °C (for auto-tuning).
+        hysteresis (float): Relay hysteresis half-band in °C (for auto-tuning).
         v_set (float): Voltage in V.
         cooldown_dur (float): Duration of cooldown phase.
         tuning (str): Tuning method ("Auto tuning" or "Manual tuning").
@@ -307,6 +337,8 @@ def run_djs_pid(
             devices,
             tuning_durr,
             i_set,
+            t_set,
+            hysteresis,
             v_set,
             lp_dataset["time"],
             lp_dataset["temperature"],
@@ -364,6 +396,8 @@ def run_djs_pid(
     if time_start is None:
         time_start = time.monotonic()
         max_temperature = 0.0  # Reset max_temperature for fresh experiment if no auto-tuning
+        reset_temperature_reader()  # Clear stale sensor state from previous run
+    last_plot_time = time.monotonic()
     total_steps = len(temp_sp)
 
     for idx, (setpoint, duration) in enumerate(zip(temp_sp, durr_sp, strict=True), start=1):
@@ -424,13 +458,14 @@ def run_djs_pid(
                     time_remaining=f"{max(0, int(end_time - time_now))} s remaining",
                 )
 
-            if callbacks.update_plot:
+            if callbacks.update_plot and time.monotonic() - last_plot_time >= 0.2:
                 callbacks.update_plot(
                     time_data=list(lp_dataset["time"]),
                     temp_data=list(lp_dataset["temperature"]),
                     curr_data=list(lp_dataset["current"]),
                     res_data=list(lp_dataset["resistance"]),
                 )
+                last_plot_time = time.monotonic()
 
             time.sleep(max(0, next_tick - time.monotonic()))
             time_now = time.monotonic()
@@ -514,6 +549,8 @@ def run_experiment_thread(
     kd,
     tuning_time,
     tuning_method,
+    t_set,
+    hysteresis,
     stop_event,
     callbacks,
     on_experiment_complete_callback,
@@ -536,6 +573,8 @@ def run_experiment_thread(
         kd (float): PID derivative gain.
         tuning_time (int): Auto-tuning duration.
         tuning_method (str): "Auto tuning" or "Manual tuning".
+        t_set (float): Relay feedback setpoint temperature in °C (for auto-tuning).
+        hysteresis (float): Relay hysteresis half-band in °C (for auto-tuning).
         stop_event (threading.Event): Event set on SIGINT to request skip/stop.
         callbacks (ExperimentCallbacks): Experiment control callbacks.
         on_experiment_complete_callback (callable): Function to call when experiment finishes.
@@ -575,6 +614,8 @@ def run_experiment_thread(
                 temp_sp=temps,
                 durr_sp=durs,
                 i_set=current,
+                t_set=t_set,
+                hysteresis=hysteresis,
                 v_set=voltage,
                 cooldown_dur=cooldown,
                 tuning=tuning_method,
@@ -691,6 +732,8 @@ def main():
                 exp_output.get("kd", 0.1),
                 exp_output.get("tuning_time", 0),
                 exp_output.get("tuning_method", "Manual tuning"),
+                exp_output.get("t_set", 100.0),
+                exp_output.get("hysteresis", 5.0),
                 stop_event,
                 callbacks,
                 cb_complete,

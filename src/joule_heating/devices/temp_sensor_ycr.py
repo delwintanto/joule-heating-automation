@@ -105,8 +105,8 @@ def ycr_open(port=None, slave_address=1):
         device.serial.baudrate = 9600
         device.serial.bytesize = 8
         device.serial.stopbits = 1
-        device.serial.timeout = 0.5
-        device.serial.write_timeout = 0.5
+        device.serial.timeout = 0.2
+        device.serial.write_timeout = 0.2
         device.serial.parity = "E"
         device.mode = minimalmodbus.MODE_RTU
         print(f"YCR sensor initialised on {port}.")
