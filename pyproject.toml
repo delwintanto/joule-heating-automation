@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "joule-heating-automation"
-version = "1.0.0"
+version = "1.0.1"
 description = "Python-based experimental control system for sintering materials through resistive heating"
 readme = "README.md"
 requires-python = ">=3.10"

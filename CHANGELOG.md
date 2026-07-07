@@ -3,8 +3,23 @@
 All notable changes to this project will be documented in this file.
 
 The format is based on Keep a Changelog.
+This project follows Semantic Versioning.
 
 ## [Unreleased]
+
+### Added
+- None yet.
+
+### Changed
+- None yet.
+
+### Fixed
+- None yet.
+
+### Security
+- None yet.
+
+## [1.0.1] - 2026-07-07
 
 ### Added
 - Added MIT license file.
@@ -17,3 +32,4 @@ The format is based on Keep a Changelog.
 
 ### Security
 - Added guidance for private vulnerability reporting in README.
+- Rewrote git commit metadata to use GitHub noreply email for privacy.

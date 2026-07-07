@@ -1,0 +1,18 @@
+cff-version: 1.2.0
+message: "If you use this software, please cite it using the metadata from this file."
+title: "Joule Heating Automation"
+type: software
+authors:
+  - family-names: "Tanto"
+    given-names: "Delwin"
+repository-code: "https://github.com/delwintanto/joule-heating-automation"
+url: "https://github.com/delwintanto/joule-heating-automation"
+license: "MIT"
+version: "1.0.1"
+abstract: "Python-based experimental control system for Joule-heating sintering experiments with automated control, logging, and plotting."
+keywords:
+  - "joule heating"
+  - "materials science"
+  - "laboratory automation"
+  - "temperature control"
+  - "python"

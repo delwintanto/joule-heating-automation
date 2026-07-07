@@ -1,9 +1,10 @@
 # Contributors
 
-This project uses collective attribution.
+This project currently has a single maintainer and author.
 
-## How To Add Yourself
+## Maintainer and Author
+- Delwin Tanto (@delwintanto) - Project lead, architecture, hardware integration, and release management
 
-Add your name or handle in a new line below after your first merged contribution.
+## Future Contributors
 
-- Joule Heating Automation Contributors
+If external contributions are accepted in future, add one line per contributor here after their first merged contribution.
