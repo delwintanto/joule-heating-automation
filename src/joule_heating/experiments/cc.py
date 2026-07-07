@@ -17,9 +17,6 @@ Main Functions:
     - run_djs_cc: Execute constant-current heating phase
     - cooldown: Monitor and record cooldown phase
     - run_experiment_thread: Orchestrate full experiment workflow
-
-Author       : Delwin Tanto
-Last updated : 10 Mar 2026
 """
 
 import math

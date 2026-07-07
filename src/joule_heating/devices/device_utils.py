@@ -24,9 +24,6 @@ finally:
     # Option 2: shutdown + close plot in one call
     close_all(psu, ycr_sensor, optris_sensor)
 ```
-
-Author       : Delwin Tanto
-Last updated : 16 Dec 2025
 """
 
 from typing import NamedTuple

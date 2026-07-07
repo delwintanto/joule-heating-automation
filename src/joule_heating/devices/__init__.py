@@ -11,9 +11,6 @@ Modules:
     - temp_sensor_ycr: YCR IR sensor specific functions
     - temp_sensor_optris: Optris IR sensor specific functions
     - port_detect: Serial port detection utilities
-
-Author       : Delwin Tanto
-Last updated : 17 Dec 2025
 """
 
 from .device_utils import (

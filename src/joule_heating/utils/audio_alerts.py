@@ -8,8 +8,6 @@ Functions:
     - alert_step_start: Beep to signal the start of a heating step
     - alert_cooldown_end: Beep to signal the end of cooldown phase
 
-Author       : Delwin Tanto
-Last updated : 21 Jan 2026
 """
 
 import sys

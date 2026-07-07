@@ -7,9 +7,6 @@ Modules:
     common: Shared widgets and utility functions
     gui_cc: Constant-current experiment GUI and callbacks
     gui_pid: PID-controlled experiment GUI and callbacks
-
-Author       : Delwin Tanto
-Last updated : 10 Dec 2025
 """
 
 # Import main GUI functions for backward compatibility

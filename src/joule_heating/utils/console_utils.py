@@ -2,9 +2,6 @@
 
 This module provides utilities for manipulating the console window on Windows,
 such as positioning and resizing.
-
-Author       : Delwin Tanto
-Last updated : 11 Dec 2025
 """
 
 import ctypes

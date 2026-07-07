@@ -13,9 +13,6 @@ Default settings (see device manual):
 Usage:
     python power_supply_etm.py
 or import the functions in your own code
-
-Author       : Delwin Tanto
-Last updated : 06 Nov 2025
 """
 
 from typing import Any

@@ -12,9 +12,6 @@ Default settings (see device manual):
 Usage:
     python temp_sensor_ycr.py
 or import the functions in your own code
-
-Author       : Delwin Tanto
-Last updated : 06 Nov 2025
 """
 
 import contextlib

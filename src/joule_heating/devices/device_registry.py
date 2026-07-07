@@ -2,9 +2,6 @@
 
 This module provides a single source of truth for hardware identification
 strings used for automatic device detection via serial port scanning.
-
-Author       : Delwin Tanto
-Last updated : 15 Dec 2025
 """
 
 # Hardware ID substrings for device detection

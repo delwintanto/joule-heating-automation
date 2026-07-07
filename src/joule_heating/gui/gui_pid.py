@@ -2,9 +2,6 @@
 
 This module provides the GUI for PID-controlled temperature experiments
 with support for both auto-tuning and manual PID parameter entry.
-
-Author       : Delwin Tanto
-Last updated : 09 Mar 2026
 """
 
 import os
@@ -621,7 +618,7 @@ def gui_pid(psu=None, ycr=None, optris=None):
     # Footer
     tk.Label(
         container,
-        text=f"{os.path.basename(__file__)} | Author: Delwin Tanto",
+        text=f"{os.path.basename(__file__)}",
         font=("TkDefaultFont", 7),
     ).grid(row=999, column=0, columnspan=3, sticky=tk.SW, padx=5)
 

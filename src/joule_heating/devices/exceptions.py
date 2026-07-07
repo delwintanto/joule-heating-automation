@@ -8,9 +8,6 @@ Exception Hierarchy:
     DeviceError (base)
     ├── PSUError (power supply errors)
     └── TemperatureSensorError (IR sensor errors)
-
-Author       : Delwin Tanto
-Last updated : 17 Dec 2025
 """
 
 

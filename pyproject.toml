@@ -9,7 +9,7 @@ description = "Python-based experimental control system for sintering materials 
 readme = "README.md"
 requires-python = ">=3.10"
 authors = [
-    {name = "Delwin Tanto"}
+    {name = "Joule Heating Automation Contributors"}
 ]
 dependencies = [
     "pandas>=2.0.0",

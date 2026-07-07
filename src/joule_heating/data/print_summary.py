@@ -5,9 +5,6 @@ display a short summary after an experiment finishes, and to print a compact
 representation of the set of heating steps used.
 
 The functions intentionally only print to stdout and do not modify any data.
-
-Author       : Delwin Tanto
-Last updated : 06 Nov 2025
 """
 
 from typing import Any

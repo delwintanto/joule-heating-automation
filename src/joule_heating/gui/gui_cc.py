@@ -2,9 +2,6 @@
 
 This module provides the GUI for constant-current Joule heating experiments
 and the callback functions for integrating with the experiment thread.
-
-Author       : Delwin Tanto
-Last updated : 09 Mar 2026
 """
 
 import os
@@ -333,7 +330,7 @@ def gui_cc(psu=None, ycr=None, optris=None):
     # Footer
     tk.Label(
         gui_window,
-        text=f"{os.path.basename(__file__)} | Author: Delwin Tanto",
+        text=f"{os.path.basename(__file__)}",
         font=("TkDefaultFont", 7),
     ).grid(row=999, column=0, columnspan=3, sticky=tk.SW, padx=5)
 

@@ -22,6 +22,7 @@ This guide is written for lab users with limited coding background.
 - [Troubleshooting (lab-focused)](#troubleshooting-lab-focused)
 - [Supported hardware](#supported-hardware)
 - [Advanced/developer notes](#advanced--developer-notes)
+- [Security](#security)
 
 
 ## Lab quick start (Windows)
@@ -278,6 +279,43 @@ When reporting issues, include:
 - Console output
 - CSV or `.partial` file (if available)
 
+
+## Security
+
+This project is intended to be safe to host publicly, but keep these checks in place:
+
+- Do not commit API keys, passwords, access tokens, or private keys
+- Keep machine-specific paths and local usernames out of docs/examples where possible
+- Keep experiment output data (`.csv`, images) out of git unless intentionally anonymized and shared
+- Review PRs for accidental secrets before merge
+
+### Vulnerability disclosure template
+
+If you find a security issue, please report it privately first.
+
+Suggested contact block (replace placeholders):
+
+```text
+Security Contact: [your-email@example.com]
+PGP Key (optional): [link-or-fingerprint]
+Preferred Language: English
+Expected Acknowledgement Time: 72 hours
+```
+
+Suggested report format:
+
+```text
+Subject: [SECURITY] Short title
+
+1) Affected component/file:
+2) Impact:
+3) Reproduction steps:
+4) Proof of concept (if safe to share):
+5) Suggested fix (optional):
+```
+
+Please avoid opening a public issue for unpatched vulnerabilities.
+
 ---
 
-**Author:** Delwin Tanto
+**Author:** Joule Heating Automation Contributors

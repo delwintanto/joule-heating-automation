@@ -2,9 +2,6 @@
 
 A comprehensive package for automating Joule heating experiments with power supply
 control, temperature sensing, data acquisition, and analysis.
-
-Author       : Delwin Tanto
-Last updated : 15 Dec 2025
 """
 
 from importlib.metadata import PackageNotFoundError, version

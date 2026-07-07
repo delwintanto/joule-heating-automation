@@ -17,9 +17,6 @@ Main Functions:
     - auto_tune_pid: Tune PID parameters using relay feedback
     - run_djs_pid: Execute PID-controlled heating and cooldown
     - run_experiment_thread: Orchestrate full experiment workflow
-
-Author       : Delwin Tanto
-Last updated : 09 Mar 2026
 """
 
 import contextlib

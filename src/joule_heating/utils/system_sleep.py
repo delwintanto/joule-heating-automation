@@ -22,9 +22,6 @@ Platform Support:
     - Windows: Uses SetThreadExecutionState API
     - macOS: Uses caffeinate command
     - Linux: Uses xset command (if available)
-
-Author       : Delwin Tanto
-Last updated : 18 Jun 2025
 """
 
 import ctypes

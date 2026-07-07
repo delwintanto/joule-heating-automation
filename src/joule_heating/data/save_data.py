@@ -5,7 +5,7 @@ This module implements a streaming CSV writer that keeps a temporary
 the final CSV when complete. It attempts to set the file hidden attribute on
 Windows and acquires an advisory lock while writing.
 
-Usage::
+Usage:
 
     from joule_heating.data import CsvWriter
 
@@ -13,9 +13,6 @@ Usage::
     writer.start()
     writer.row(elapsed, temp, current, voltage, resistance)
     path = writer.finalise()
-
-Author       : Delwin Tanto
-Last updated : 09 Mar 2026
 """
 
 import contextlib

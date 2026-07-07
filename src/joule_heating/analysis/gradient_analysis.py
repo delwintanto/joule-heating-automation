@@ -40,9 +40,6 @@ Usage:
     )
     plot_data(time_array, results)
     ```
-
-Author       : Delwin Tanto
-Last updated : 04 Nov 2025
 """
 
 import numpy as np

@@ -7,7 +7,7 @@ This project uses modern Python packaging with `pyproject.toml`. Follow these st
 ### 1. Clone or Download the Repository
 
 ```bash
-cd "C:\Users\delwintanto\Documents\Python Scripts\joule-heating-automation"
+cd "path\\to\\joule-heating-automation"
 ```
 
 ### 2. Create a Virtual Environment (Recommended)

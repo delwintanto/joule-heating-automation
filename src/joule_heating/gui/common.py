@@ -2,9 +2,6 @@
 
 This module provides shared widgets, helper functions, and utilities used
 by both constant-current (CC) and PID GUI interfaces.
-
-Author       : Delwin Tanto
-Last updated : 10 Dec 2025
 """
 
 import json

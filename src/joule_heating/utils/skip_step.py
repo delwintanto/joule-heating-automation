@@ -36,9 +36,6 @@ Usage:
         finally:
             signal.signal(signal.SIGINT, old)
     ```
-
-Author       : Delwin Tanto
-Last updated : 10 Mar 2026
 """
 
 import contextlib

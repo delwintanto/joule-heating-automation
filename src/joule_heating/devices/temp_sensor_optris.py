@@ -15,9 +15,6 @@ Default settings (see device manual):
 Usage:
     python temp_sensor_optris.py
 or import the functions in your own code.
-
-Author       : Delwin Tanto
-Last updated : 09 Oct 2025
 """
 
 import math

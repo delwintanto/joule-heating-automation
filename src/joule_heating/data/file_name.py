@@ -7,9 +7,6 @@ This module provides the `generate_filename()` function, which:
   to ensure compatibility across operating systems (especially Windows).
 - Optionally appends a "_tuning_data" suffix if the file is used for tuning experiments.
 - Ensures uniqueness by appending incremental counter if a file with the same name already exists.
-
-Author       : Delwin Tanto
-Last updated : 10 Oct 2025
 """
 
 import datetime

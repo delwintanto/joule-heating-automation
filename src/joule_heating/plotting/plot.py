@@ -1,8 +1,5 @@
 """Module for plotting Joule heating experiment data using matplotlib.
 Result is a 2x2 grid of subplots for Temperature, Voltage, Current, and Resistance.
-
-Author       : Delwin Tanto
-Last updated : 04 Nov 2025
 """
 
 import contextlib
