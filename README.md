@@ -1,5 +1,7 @@
 # Joule Heating Automation
 
+[![DOI](https://zenodo.org/badge/1094690047.svg)](https://doi.org/10.5281/zenodo.21252234)
+
 Python software for running Joule-heating experiments with a lab-friendly GUI.
 
 Main run modes:
